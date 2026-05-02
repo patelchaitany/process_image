@@ -61,9 +61,9 @@ bool TritonClient::registerCudaShm(const std::string& name, void* gpuPtr,
                 name.c_str(), err.Message().c_str());
         return false;
     }
-    registeredShm_[name] = byteSize;
-    fprintf(stderr, "TritonClient: registered CUDA shm '%s' (%zu bytes)\n",
-            name.c_str(), byteSize);
+    registeredShm_[name] = {gpuPtr, byteSize};
+    fprintf(stderr, "TritonClient: registered CUDA shm '%s' (%zu bytes, device %d)\n",
+            name.c_str(), byteSize, deviceId);
     return true;
 }
 
@@ -87,6 +87,15 @@ void TritonClient::unregisterAllShm() {
     }
 }
 
+void TritonClient::extractStats(tc::InferResult* inferResult, InferResult& result) {
+    tc::InferStat stat;
+    if (inferResult->Statistics(&stat).IsOk()) {
+        result.queueTimeNs = static_cast<float>(stat.queue_ns);
+        result.computeTimeNs = static_cast<float>(stat.compute_infer_ns);
+        result.computeInputTimeNs = static_cast<float>(stat.compute_input_ns);
+    }
+}
+
 InferResult TritonClient::infer(const std::string& modelName,
                                  const std::string& inputShmName,
                                  const std::vector<int64_t>& inputShape,
@@ -97,12 +106,12 @@ InferResult TritonClient::infer(const std::string& modelName,
         result.errorMsg = "Not connected to Triton";
         return result;
     }
-    // Compute byte sizes from shapes
+
     size_t inputBytes = sizeof(float) * std::accumulate(
         inputShape.begin(), inputShape.end(), int64_t{1}, std::multiplies<>());
     size_t outputBytes = sizeof(float) * std::accumulate(
         outputShape.begin(), outputShape.end(), int64_t{1}, std::multiplies<>());
-    // Create input tensor referencing CUDA shared memory
+
     tc::InferInput* rawInput = nullptr;
     tc::Error err = tc::InferInput::Create(&rawInput, INPUT_TENSOR_NAME, inputShape, "FP32");
     if (!err.IsOk()) {
@@ -115,7 +124,7 @@ InferResult TritonClient::infer(const std::string& modelName,
         result.errorMsg = "Failed to set input shm: " + err.Message();
         return result;
     }
-    // Create output tensor referencing CUDA shared memory
+
     tc::InferRequestedOutput* rawOutput = nullptr;
     err = tc::InferRequestedOutput::Create(&rawOutput, OUTPUT_TENSOR_NAME);
     if (!err.IsOk()) {
@@ -128,12 +137,13 @@ InferResult TritonClient::infer(const std::string& modelName,
         result.errorMsg = "Failed to set output shm: " + err.Message();
         return result;
     }
-    // Configure inference options
+
     tc::InferOptions options(modelName);
     options.model_version_ = "";
-    // Execute inference
+
     std::vector<tc::InferInput*> inputs = {input.get()};
     std::vector<const tc::InferRequestedOutput*> outputs = {output.get()};
+
     tc::InferResult* rawResult = nullptr;
     err = client_->Infer(&rawResult, options, inputs, outputs);
     if (!err.IsOk()) {
@@ -141,25 +151,94 @@ InferResult TritonClient::infer(const std::string& modelName,
         return result;
     }
     std::unique_ptr<tc::InferResult> inferResult(rawResult);
-    // Extract timing statistics from the response
-    std::string modelStat;
-    inferResult->ModelName(&modelStat);
-    tc::InferStat stat;
-    if (inferResult->Statistics(&stat).IsOk()) {
-        result.queueTimeNs = static_cast<float>(stat.queue_ns);
-        result.computeTimeNs = static_cast<float>(stat.compute_infer_ns);
-        result.computeInputTimeNs = static_cast<float>(stat.compute_input_ns);
-    }
-    // Output data lives in the CUDA shared memory region -- retrieve pointer
-    // The caller owns the memory (it's in their pre-registered GPU buffer)
+
+    extractStats(inferResult.get(), result);
+
     auto shmIt = registeredShm_.find(outputShmName);
-    if (shmIt == registeredShm_.end()) {
-        result.errorMsg = "Output shm region not found in registry";
+    if (shmIt == registeredShm_.end() || !shmIt->second.gpuPtr) {
+        result.errorMsg = "Output shm region not found or has null GPU pointer";
         return result;
     }
-    result.isSuccess = true;
+
+    size_t numFloats = outputBytes / sizeof(float);
+    result.ownedOutput.resize(numFloats);
+    cudaError_t cudaErr = cudaMemcpy(result.ownedOutput.data(), shmIt->second.gpuPtr,
+                                      outputBytes, cudaMemcpyDeviceToHost);
+    if (cudaErr != cudaSuccess) {
+        result.errorMsg = std::string("cudaMemcpy D2H failed: ") + cudaGetErrorString(cudaErr);
+        return result;
+    }
+
+    result.outputData = result.ownedOutput.data();
     result.outputShape = outputShape;
-    // outputData will be set by caller who owns the GPU pointer
-    result.outputData = nullptr;
+    result.isSuccess = true;
+    return result;
+}
+
+InferResult TritonClient::inferDirect(const std::string& modelName,
+                                       const float* inputData,
+                                       const std::vector<int64_t>& inputShape,
+                                       const std::vector<int64_t>& outputShape) {
+    InferResult result;
+    if (!isConnected_ || !client_) {
+        result.errorMsg = "Not connected to Triton";
+        return result;
+    }
+
+    size_t inputBytes = sizeof(float) * std::accumulate(
+        inputShape.begin(), inputShape.end(), int64_t{1}, std::multiplies<>());
+
+    tc::InferInput* rawInput = nullptr;
+    tc::Error err = tc::InferInput::Create(&rawInput, INPUT_TENSOR_NAME, inputShape, "FP32");
+    if (!err.IsOk()) {
+        result.errorMsg = "Failed to create InferInput: " + err.Message();
+        return result;
+    }
+    std::unique_ptr<tc::InferInput> input(rawInput);
+    err = input->AppendRaw(reinterpret_cast<const uint8_t*>(inputData), inputBytes);
+    if (!err.IsOk()) {
+        result.errorMsg = "Failed to append raw input: " + err.Message();
+        return result;
+    }
+
+    tc::InferRequestedOutput* rawOutput = nullptr;
+    err = tc::InferRequestedOutput::Create(&rawOutput, OUTPUT_TENSOR_NAME);
+    if (!err.IsOk()) {
+        result.errorMsg = "Failed to create InferRequestedOutput: " + err.Message();
+        return result;
+    }
+    std::unique_ptr<tc::InferRequestedOutput> output(rawOutput);
+
+    tc::InferOptions options(modelName);
+    options.model_version_ = "";
+
+    std::vector<tc::InferInput*> inputs = {input.get()};
+    std::vector<const tc::InferRequestedOutput*> outputs = {output.get()};
+
+    tc::InferResult* rawResult = nullptr;
+    err = client_->Infer(&rawResult, options, inputs, outputs);
+    if (!err.IsOk()) {
+        result.errorMsg = "Inference failed: " + err.Message();
+        return result;
+    }
+    std::unique_ptr<tc::InferResult> inferResult(rawResult);
+
+    extractStats(inferResult.get(), result);
+
+    const uint8_t* outputBuf = nullptr;
+    size_t outputBufSize = 0;
+    err = inferResult->RawData(OUTPUT_TENSOR_NAME, &outputBuf, &outputBufSize);
+    if (!err.IsOk() || !outputBuf) {
+        result.errorMsg = "Failed to read output data: " + err.Message();
+        return result;
+    }
+
+    size_t numFloats = outputBufSize / sizeof(float);
+    result.ownedOutput.resize(numFloats);
+    std::memcpy(result.ownedOutput.data(), outputBuf, outputBufSize);
+
+    result.outputData = result.ownedOutput.data();
+    result.outputShape = outputShape;
+    result.isSuccess = true;
     return result;
 }

@@ -12,6 +12,8 @@ struct CPUBuffers {
     std::vector<float> arcface_output;  // [M,512]
 };
 
+/// @brief CPU-side buffer pool. Inference uses inline gRPC data transfer
+/// (TritonClient::inferDirect) so no shared memory registration is needed.
 class CPUMemoryPool {
 public:
     CPUMemoryPool() = default;
@@ -23,9 +25,6 @@ public:
 
     CPUBuffers& buffers() { return buffers_; }
     const CPUBuffers& buffers() const { return buffers_; }
-
-    bool register_system_shm(const std::string& triton_url);
-    void unregister_system_shm();
 
 private:
     CPUBuffers buffers_;

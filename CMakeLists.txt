@@ -119,6 +119,10 @@ if(OpenCV_FOUND)
     target_include_directories(process_image PRIVATE ${OpenCV_INCLUDE_DIRS})
 endif()
 
+if(YAML_CPP_INCLUDE_DIR AND YAML_CPP_LIBRARY)
+    target_compile_definitions(process_image PRIVATE HAS_YAML_CPP=1)
+endif()
+
 if(spdlog_FOUND)
     target_compile_definitions(process_image PRIVATE HAS_SPDLOG=1)
     target_link_libraries(process_image PRIVATE spdlog::spdlog)
@@ -172,8 +176,36 @@ target_link_libraries(test_face_matcher PRIVATE
     ${FAISS_LIBRARY}
 )
 
+add_executable(test_triton_client
+    tests/test_triton_client.cpp
+    src/inference/triton_client.cpp
+)
+target_include_directories(test_triton_client PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${TRITON_CLIENT_INCLUDE_DIR}
+)
+target_link_libraries(test_triton_client PRIVATE
+    GTest::gtest_main
+    ${TRITON_GRPC_CLIENT}
+    CUDA::cudart
+)
+
+add_executable(test_cpu_preprocessor
+    tests/test_cpu_preprocessor.cpp
+    src/gpu/cpu_preprocessor.cpp
+)
+target_include_directories(test_cpu_preprocessor PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_cpu_preprocessor PRIVATE GTest::gtest_main)
+if(OpenCV_FOUND)
+    target_compile_definitions(test_cpu_preprocessor PRIVATE HAS_OPENCV=1)
+    target_link_libraries(test_cpu_preprocessor PRIVATE ${OpenCV_LIBS})
+    target_include_directories(test_cpu_preprocessor PRIVATE ${OpenCV_INCLUDE_DIRS})
+endif()
+
 include(GoogleTest)
 gtest_discover_tests(test_nms)
 gtest_discover_tests(test_frame_source)
 gtest_discover_tests(test_face_database)
 gtest_discover_tests(test_face_matcher)
+gtest_discover_tests(test_triton_client)
+gtest_discover_tests(test_cpu_preprocessor)

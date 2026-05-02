@@ -35,10 +35,36 @@ void MetricsLogger::shutdown() {
         writer_thread_.join();
     }
 
-    // Drain remaining buffer
     FrameMetrics m;
     while (buffer_.pop(m)) {
-        // write remaining entries
+        if (file_.is_open()) {
+            if (!header_written_) {
+                file_ << "frame_id,timestamp_utc,source_id,"
+                      << "decode_ms,yuv_to_bgr_ms,cpu_to_gpu_ms,"
+                      << "preprocess_total_ms,"
+                      << "grpc1_overhead_ms,yolo_inference_ms,"
+                      << "triton_yolo_queue_ms,triton_yolo_compute_ms,"
+                      << "nms_total_ms,faces_detected,"
+                      << "face_crop_ms,"
+                      << "grpc2_overhead_ms,arcface_inference_ms,"
+                      << "triton_arcface_queue_ms,triton_arcface_compute_ms,"
+                      << "faiss_search_ms,"
+                      << "result_copy_ms,total_pipeline_ms,gpu_memory_used_mb\n";
+                header_written_ = true;
+            }
+            file_ << m.frame_id << "," << m.timestamp_utc << "," << m.source_id << ","
+                  << m.decode_ms << "," << m.yuv_to_bgr_ms << "," << m.cpu_to_gpu_ms << ","
+                  << m.preprocess_total_ms << ","
+                  << m.grpc1_overhead_ms << "," << m.yolo_inference_ms << ","
+                  << m.triton_yolo_queue_ms << "," << m.triton_yolo_compute_ms << ","
+                  << m.nms_total_ms << "," << m.faces_detected << ","
+                  << m.face_crop_ms << ","
+                  << m.grpc2_overhead_ms << "," << m.arcface_inference_ms << ","
+                  << m.triton_arcface_queue_ms << "," << m.triton_arcface_compute_ms << ","
+                  << m.faiss_search_ms << ","
+                  << m.result_copy_ms << "," << m.total_pipeline_ms << ","
+                  << m.gpu_memory_used_mb << "\n";
+        }
     }
 
     if (file_.is_open()) {

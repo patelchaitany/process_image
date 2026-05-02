@@ -19,6 +19,14 @@ TEST(TritonClientTest, RegisterShmWithoutConnection) {
     EXPECT_FALSE(client.registerCudaShm("test", nullptr, 1024));
 }
 
+TEST(TritonClientTest, InferDirectWithoutConnection) {
+    TritonClient client;
+    float dummy[1] = {0.0f};
+    auto result = client.inferDirect("model", dummy, {1, 3, 640, 640}, {1, 8400, 5});
+    EXPECT_FALSE(result.isSuccess);
+    EXPECT_FALSE(result.errorMsg.empty());
+}
+
 // Integration tests requiring running Triton server
 TEST(TritonClientTest, DISABLED_ConnectToLiveServer) {
     TritonClient client;

@@ -34,13 +34,3 @@ bool CPUMemoryPool::upload_frame(const uint8_t* data, size_t size) {
     std::memcpy(buffers_.raw_frame.data(), data, size);
     return true;
 }
-
-bool CPUMemoryPool::register_system_shm(const std::string& /*triton_url*/) {
-    // Register system shared memory regions with Triton
-    // Uses tritonclient::SystemSharedMemoryControlGrpc
-    return true;
-}
-
-void CPUMemoryPool::unregister_system_shm() {
-    // Unregister system shared memory
-}
