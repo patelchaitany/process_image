@@ -336,13 +336,138 @@ For 16 cameras at 30fps (480 frames/sec), adjust Triton configs:
 - `preferred_batch_size: [4, 8, 16]`
 - `instance_group: count: 2` (two model instances on the same GPU, if memory allows)
 
+## CLI Interface
+
+The C++ pipeline is invoked from the command line. All configuration is passed as flags -- no interactive prompts.
+
+```
+Usage: process_image --input <source> --triton <url> [options]
+
+Required:
+  --input <path|url>       Input source: MP4 file path or RTSP URL
+  --triton <url>           Triton server URL (e.g. localhost:8001)
+
+Optional:
+  --output-csv <path>      Metrics CSV output path (default: ./metrics/metrics.csv)
+  --db <path>              SQLite face database path (default: ./faces.db)
+  --confidence <float>     YOLO detection confidence threshold (default: 0.5)
+  --match-threshold <float> Face match similarity threshold (default: 0.6)
+  --device <gpu|cpu>       Force device mode (default: auto-detect)
+  --yolo-model <name>      Triton model name for detection (default: yolo26_face)
+  --arcface-model <name>   Triton model name for recognition (default: arcface)
+```
+
+Examples:
+
+```bash
+# Process a video file
+./process_image --input video.mp4 --triton localhost:8001 --output-csv results.csv
+
+# Process an RTSP stream
+./process_image --input rtsp://192.168.1.100:554/stream --triton localhost:8001
+
+# Force CPU mode, custom database
+./process_image --input video.mp4 --triton localhost:8001 --device cpu --db /data/faces.db
+```
+
+The pipeline runs until the input source ends (MP4 EOF) or is interrupted (Ctrl+C for RTSP). On exit, the metrics CSV is flushed and closed.
+
+## Face Enrollment Tool (Python)
+
+A Python CLI script that populates the SQLite face database from a folder of person photos. This is a one-time setup step run before the C++ pipeline.
+
+### Folder Structure
+
+The user provides a root folder where each **subfolder name is the person's name**, containing one or more photos of that person:
+
+```
+faces/
+├── alice/
+│   ├── photo1.jpg
+│   ├── photo2.png
+│   └── photo3.jpeg
+├── bob/
+│   ├── front.jpg
+│   └── side.png
+└── charlie/
+    └── headshot.bmp
+```
+
+Supported image formats: JPEG, PNG, BMP, TIFF, WebP -- any format OpenCV can read.
+
+### What the Script Does
+
+1. Connects to the running Triton server
+2. For each subfolder (person):
+   a. For each image file in the subfolder:
+      - Read image with OpenCV
+      - Preprocess and send to YOLO model on Triton → detect faces
+      - If exactly one face detected: crop, preprocess, send to ArcFace on Triton → get 512-dim embedding
+      - If zero faces detected: warn and skip the image
+      - If multiple faces detected: warn and skip (ambiguous which face is the person)
+   b. Average all valid embeddings for that person into a single representative embedding (L2-normalized)
+   c. Store the person name + averaged embedding in SQLite
+3. Print summary: N persons enrolled, M images processed, K skipped
+
+### CLI
+
+```
+Usage: python enroll_faces.py --faces-dir <path> --db <path> --triton <url> [options]
+
+Required:
+  --faces-dir <path>       Root folder with person subfolders
+  --db <path>              SQLite database path (created if not exists)
+  --triton <url>           Triton server URL (e.g. localhost:8001)
+
+Optional:
+  --yolo-model <name>      Triton model name for detection (default: yolo26_face)
+  --arcface-model <name>   Triton model name for recognition (default: arcface)
+  --confidence <float>     Face detection confidence threshold (default: 0.5)
+  --replace                Drop existing faces table and re-enroll from scratch
+```
+
+Example:
+
+```bash
+python enroll_faces.py --faces-dir ./faces/ --db ./faces.db --triton localhost:8001
+```
+
+Output:
+
+```
+Connecting to Triton at localhost:8001... OK
+Processing alice/ (3 images)...
+  photo1.jpg: 1 face detected, embedding extracted
+  photo2.png: 1 face detected, embedding extracted
+  photo3.jpeg: 0 faces detected, skipping
+  → alice enrolled (averaged 2 embeddings)
+Processing bob/ (2 images)...
+  front.jpg: 1 face detected, embedding extracted
+  side.png: 1 face detected, embedding extracted
+  → bob enrolled (averaged 2 embeddings)
+Processing charlie/ (1 image)...
+  headshot.bmp: 2 faces detected, skipping (ambiguous)
+  → charlie: no valid embeddings, NOT enrolled
+
+Summary: 2/3 persons enrolled, 4/6 images used, 2 skipped
+Database written to ./faces.db
+```
+
+### Python Dependencies
+
+```
+tritonclient[grpc]
+numpy
+opencv-python
+```
+
 ## Project Structure
 
 ```
 process_image/
 ├── CMakeLists.txt
 ├── src/
-│   ├── main.cpp
+│   ├── main.cpp                        # CLI argument parsing, pipeline init + run loop
 │   ├── frame_source/
 │   │   ├── frame_source.h
 │   │   ├── ffmpeg_source.h
@@ -380,6 +505,9 @@ process_image/
 │   └── utils/
 │       ├── config.h
 │       └── timer.h
+├── tools/
+│   ├── enroll_faces.py                 # Face enrollment CLI (Python)
+│   └── requirements.txt                # Python deps: tritonclient, numpy, opencv
 ├── config/
 │   └── pipeline.yaml
 ├── models/ -> /Users/chpatel/projects/motivation/models
@@ -411,3 +539,5 @@ process_image/
 4. Per-frame CSV metrics capture all atomic timings with < 0.04ms overhead
 5. SQLite face database loads into FAISS-GPU index at startup
 6. Clean build with CMake, no external build system dependencies beyond listed libraries
+7. `enroll_faces.py` enrolls faces from a folder of person photos, handles edge cases (zero/multiple faces), and prints a clear summary
+8. CLI accepts `--input`, `--triton`, `--output-csv` and runs without interactive prompts
