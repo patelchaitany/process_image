@@ -268,7 +268,7 @@ def download_real_arcface(output_path):
 
 
 def _fix_arcface_io(model_path):
-    """Ensure ArcFace I/O names match config.pbtxt expectations."""
+    """Ensure ArcFace I/O names match config.pbtxt and batch dim is dynamic."""
     import onnx
 
     model = onnx.load(model_path)
@@ -283,38 +283,199 @@ def _fix_arcface_io(model_path):
     if in_map or out_map:
         print(f"    Renaming I/O: {current_in}→input, {current_out}→output")
         rename_onnx_io(model_path, input_map=in_map, output_map=out_map)
+        model = onnx.load(model_path)
+        g = model.graph
+
+    changed = False
+    for tensor in list(g.input) + list(g.output):
+        shape = tensor.type.tensor_type.shape
+        if shape and shape.dim:
+            dim0 = shape.dim[0]
+            if dim0.dim_value > 0:
+                print(f"    Making batch dim dynamic for {tensor.name!r} "
+                      f"(was fixed at {dim0.dim_value})")
+                dim0.Clear()
+                dim0.dim_param = "N"
+                changed = True
+
+    if model.ir_version > 8:
+        print(f"    Downgrading IR version {model.ir_version} → 8")
+        model.ir_version = 8
+        changed = True
+
+    if changed:
+        onnx.save(model, model_path)
 
 
 def download_real_yolo(output_path):
     """
-    Export a YOLOv8n face-detection ONNX via ultralytics, then adjust
-    output shape to [N, 8400, 5] (cx, cy, w, h, conf).
+    Download a real YOLOv8 face-detection ONNX model.
+
+    Tries in order:
+      1. lindevs/yolov8-face (single-class face detector, WIDERFace-trained)
+      2. ultralytics YOLOv8n COCO export + post-hoc conversion (fallback)
     """
+    if _download_yolo_face_model(output_path):
+        return True
+
+    if _export_yolo_coco_fallback(output_path):
+        return True
+
+    return False
+
+
+# ── Primary: download pre-trained YOLOv8-face (single class) ──────────────
+
+YOLO_FACE_URL = (
+    "https://github.com/lindevs/yolov8-face/releases/latest/download/"
+    "yolov8n-face-lindevs.onnx"
+)
+
+
+def _download_yolo_face_model(output_path):
+    """Download lindevs YOLOv8n-face ONNX and reshape to [N, 8400, 5]."""
+    import urllib.request
+
     try:
-        print("  Trying ultralytics YOLOv8n export...")
+        print("  Trying lindevs/yolov8-face (WIDERFace-trained)...")
+        tmp_path = output_path + ".download"
+        urllib.request.urlretrieve(YOLO_FACE_URL, tmp_path)
+        _reshape_face_yolo(tmp_path, output_path)
+        os.remove(tmp_path)
+        print(f"  Downloaded real face YOLO → {output_path}")
+        return True
+    except Exception as e:
+        print(f"  lindevs download failed: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return False
+
+
+def _reshape_face_yolo(src_path, dst_path):
+    """Transpose single-class face YOLO from [N, 5, 8400] → [N, 8400, 5], fix I/O names,
+    and make the model truly dynamic-batch so Triton can batch requests."""
+    import onnx
+    from onnx import helper, TensorProto, numpy_helper
+
+    model = onnx.load(src_path)
+    g = model.graph
+
+    # --- rename input ---
+    old_in = g.input[0].name
+    if old_in != "images":
+        for node in g.node:
+            for i, name in enumerate(node.input):
+                if name == old_in:
+                    node.input[i] = "images"
+        g.input[0].name = "images"
+
+    # --- append transpose: [N, 5, 8400] → [N, 8400, 5] ---
+    orig_output_name = g.output[0].name
+    internal_name = orig_output_name + "_pretranspose"
+
+    for node in g.node:
+        for i, name in enumerate(node.output):
+            if name == orig_output_name:
+                node.output[i] = internal_name
+
+    transpose = helper.make_node(
+        "Transpose", [internal_name], ["output0"],
+        perm=[0, 2, 1], name="transpose_to_Nx8400x5",
+    )
+    g.node.append(transpose)
+
+    del g.output[:]
+    g.output.append(helper.make_tensor_value_info(
+        "output0", TensorProto.FLOAT, ["N", 8400, 5]))
+
+    # --- make batch dimension dynamic everywhere ---
+    _make_dynamic_batch(model)
+
+    if model.ir_version > 8:
+        print(f"    Downgrading IR version {model.ir_version} → 8")
+        model.ir_version = 8
+
+    onnx.save(model, dst_path)
+
+
+def _make_dynamic_batch(model):
+    """Convert a fixed-batch ONNX model to dynamic batch.
+
+    Three things must happen:
+      1. I/O tensor shapes get dim_param="N" instead of dim_value=1
+      2. Reshape nodes whose shape constant starts with 1 get patched to -1
+         (tells ONNX to infer that dim from the input)
+      3. Cached intermediate shapes (value_info) are cleared so ONNX RT
+         re-infers everything from the now-dynamic input
+    """
+    from onnx import numpy_helper
+
+    g = model.graph
+
+    # 1) Make I/O batch dims symbolic
+    for tensor in list(g.input) + list(g.output):
+        shape = tensor.type.tensor_type.shape
+        if shape and shape.dim:
+            dim0 = shape.dim[0]
+            if dim0.dim_value > 0:
+                print(f"    Dynamic batch: {tensor.name!r} dim0 {dim0.dim_value} → N")
+                dim0.Clear()
+                dim0.dim_param = "N"
+
+    # 2) Patch Reshape shape constants: [1, ...] → [-1, ...]
+    init_by_name = {init.name: init for init in g.initializer}
+
+    for node in g.node:
+        if node.op_type != "Reshape" or len(node.input) < 2:
+            continue
+        shape_name = node.input[1]
+        if shape_name not in init_by_name:
+            continue
+
+        init = init_by_name[shape_name]
+        arr = numpy_helper.to_array(init).copy()
+
+        if arr.ndim == 1 and len(arr) >= 2 and arr[0] == 1:
+            arr[0] = 0 if -1 in arr[1:] else -1
+            new_init = numpy_helper.from_array(arr, name=init.name)
+            init.CopyFrom(new_init)
+            print(f"    Dynamic batch: Reshape {shape_name} → {arr.tolist()}")
+
+    # 3) Clear cached intermediate shapes
+    del g.value_info[:]
+
+
+# ── Fallback: export generic COCO YOLOv8n and convert ─────────────────────
+
+def _export_yolo_coco_fallback(output_path):
+    """Export YOLOv8n (COCO 80-class) and collapse classes to single conf."""
+    try:
+        print("  Trying ultralytics YOLOv8n COCO export (fallback)...")
         from ultralytics import YOLO
 
         model = YOLO("yolov8n.pt")
         tmp_path = model.export(format="onnx", imgsz=640, simplify=True)
         if tmp_path and os.path.exists(tmp_path):
-            _convert_yolo_for_face(tmp_path, output_path)
+            _convert_yolo_coco_for_face(tmp_path, output_path)
             if os.path.abspath(tmp_path) != os.path.abspath(output_path):
                 os.remove(tmp_path)
-            print(f"  Exported real YOLO model → {output_path}")
+            print(f"  Exported COCO→face YOLO model → {output_path}")
             return True
     except ImportError:
         print("  ultralytics not installed (pip install ultralytics)")
     except Exception as e:
         print(f"  ultralytics export failed: {e}")
-
     return False
 
 
-def _convert_yolo_for_face(src_path, dst_path):
+def _convert_yolo_coco_for_face(src_path, dst_path):
     """
     Standard YOLOv8n outputs [1, 84, 8400] (4 coords + 80 classes).
-    We slice to [1, 5, 8400] (4 coords + max class conf) and transpose to
+    Slice to [1, 5, 8400] (4 coords + max class conf) and transpose to
     [1, 8400, 5] to match the project's expected format.
+
+    Uses ReduceMax with axes-as-input (opset 18+) for compatibility with
+    modern ONNX runtimes.
     """
     import onnx
     from onnx import helper, TensorProto, numpy_helper
@@ -360,12 +521,14 @@ def _convert_yolo_for_face(src_path, dst_path):
         name="slice_classes",
     )
 
+    reduce_axes = numpy_helper.from_array(
+        np.array([1], dtype=np.int64), name="_reduce_axes"
+    )
     reduce_max = helper.make_node(
         "ReduceMax",
-        ["_cls_raw"],
+        ["_cls_raw", "_reduce_axes"],
         ["_conf"],
-        axes=[1],
-        keepdims=True,
+        keepdims=1,
         name="reduce_max_cls",
     )
 
@@ -373,17 +536,18 @@ def _convert_yolo_for_face(src_path, dst_path):
         "Concat", ["_bboxes", "_conf"], ["_det_5"], axis=1, name="concat_det"
     )
 
-    perm_attr = [0, 2, 1]
     transpose = helper.make_node(
-        "Transpose", ["_det_5"], ["output0"], perm=perm_attr, name="transpose_det"
+        "Transpose", ["_det_5"], ["output0"],
+        perm=[0, 2, 1], name="transpose_det",
     )
 
-    g.initializer.extend([bbox_starts, bbox_ends, bbox_axes, bbox_max_ends, cls_starts])
+    g.initializer.extend([
+        bbox_starts, bbox_ends, bbox_axes, bbox_max_ends, cls_starts, reduce_axes,
+    ])
     g.node.extend([slice_bbox, slice_cls, reduce_max, concat, transpose])
 
     del g.output[:]
-    new_output = helper.make_tensor_value_info("output0", TensorProto.FLOAT, None)
-    g.output.append(new_output)
+    g.output.append(helper.make_tensor_value_info("output0", TensorProto.FLOAT, None))
 
     if g.input[0].name != "images":
         old_in = g.input[0].name

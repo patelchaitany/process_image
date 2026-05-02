@@ -81,8 +81,6 @@ private:
     std::unique_ptr<tc::InferenceServerGrpcClient> client_;
     std::unordered_map<std::string, ShmRegion> registeredShm_;
 
-    void extractStats(tc::InferResult* inferResult, InferResult& result);
-
     static constexpr const char* INPUT_TENSOR_NAME = "images";
     static constexpr const char* OUTPUT_TENSOR_NAME = "output0";
 };

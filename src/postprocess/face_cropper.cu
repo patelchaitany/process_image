@@ -1,4 +1,5 @@
 #include "face_cropper.h"
+#include <cstdint>
 #include <cstdio>
 
 bool FaceCropper::crop_and_preprocess(const void* src_frame_gpu,

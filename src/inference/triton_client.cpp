@@ -87,15 +87,6 @@ void TritonClient::unregisterAllShm() {
     }
 }
 
-void TritonClient::extractStats(tc::InferResult* inferResult, InferResult& result) {
-    tc::InferStat stat;
-    if (inferResult->Statistics(&stat).IsOk()) {
-        result.queueTimeNs = static_cast<float>(stat.queue_ns);
-        result.computeTimeNs = static_cast<float>(stat.compute_infer_ns);
-        result.computeInputTimeNs = static_cast<float>(stat.compute_input_ns);
-    }
-}
-
 InferResult TritonClient::infer(const std::string& modelName,
                                  const std::string& inputShmName,
                                  const std::vector<int64_t>& inputShape,
@@ -151,8 +142,6 @@ InferResult TritonClient::infer(const std::string& modelName,
         return result;
     }
     std::unique_ptr<tc::InferResult> inferResult(rawResult);
-
-    extractStats(inferResult.get(), result);
 
     auto shmIt = registeredShm_.find(outputShmName);
     if (shmIt == registeredShm_.end() || !shmIt->second.gpuPtr) {
@@ -222,8 +211,6 @@ InferResult TritonClient::inferDirect(const std::string& modelName,
         return result;
     }
     std::unique_ptr<tc::InferResult> inferResult(rawResult);
-
-    extractStats(inferResult.get(), result);
 
     const uint8_t* outputBuf = nullptr;
     size_t outputBufSize = 0;

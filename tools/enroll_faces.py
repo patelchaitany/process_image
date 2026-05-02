@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--arcface-model", default="arcface", help="Triton model name for recognition")
     parser.add_argument("--confidence", type=float, default=0.5, help="Face detection confidence threshold")
     parser.add_argument("--replace", action="store_true", help="Drop existing faces table and re-enroll")
+    parser.add_argument("--debug", action="store_true", help="Print raw YOLO output shape and stats")
     return parser.parse_args()
 
 
@@ -97,11 +98,40 @@ def run_arcface(client, model_name, input_blob):
     return result.as_numpy("output")
 
 
-def decode_yolo_output(output, confidence_threshold, scale, pad_x, pad_y, orig_w, orig_h):
-    """Decode YOLO output to bounding boxes in original image coordinates."""
-    # output shape: [1, N, 5] or [N, 5] -- cx, cy, w, h, conf
+def normalize_yolo_output(output, debug=False):
+    """Ensure YOLO output is in [N, 5] layout (cx, cy, w, h, conf).
+
+    Handles both [batch, N, 5] and the transposed [batch, 5, N] format
+    that many YOLO variants produce natively.
+    """
     if output.ndim == 3:
         output = output[0]
+
+    if debug:
+        print(f"    [debug] raw output shape (after batch squeeze): {output.shape}")
+        print(f"    [debug] value range: [{output.min():.4f}, {output.max():.4f}]")
+
+    # [N, 5]: already in expected layout (N >> 5)
+    # [5, N]: transposed — need to flip
+    if output.ndim == 2 and output.shape[0] < output.shape[1]:
+        if debug:
+            print(f"    [debug] transposing from [{output.shape[0]}, {output.shape[1]}] "
+                  f"to [{output.shape[1]}, {output.shape[0]}]")
+        output = output.T
+
+    return output
+
+
+def decode_yolo_output(output, confidence_threshold, scale, pad_x, pad_y, orig_w, orig_h,
+                       debug=False):
+    """Decode YOLO output to bounding boxes in original image coordinates."""
+    output = normalize_yolo_output(output, debug=debug)
+
+    if debug:
+        confs = output[:, 4] if output.shape[1] > 4 else output[:, -1]
+        print(f"    [debug] {output.shape[0]} candidates, "
+              f"max conf={confs.max():.4f}, "
+              f">{confidence_threshold}: {(confs > confidence_threshold).sum()}")
 
     detections = []
     for det in output:
@@ -243,14 +273,21 @@ def main():
             yolo_input, scale, pad_x, pad_y = preprocess_yolo(image)
             yolo_output = run_yolo(client, args.yolo_model, yolo_input)
 
+            if args.debug:
+                print(f"  [{img_name}] YOLO raw output shape: {yolo_output.shape}, "
+                      f"dtype: {yolo_output.dtype}")
+
             # Decode and NMS
             detections = decode_yolo_output(
-                yolo_output, args.confidence, scale, pad_x, pad_y, w, h
+                yolo_output, args.confidence, scale, pad_x, pad_y, w, h,
+                debug=args.debug,
             )
             detections = nms(detections)
 
             if len(detections) == 0:
-                print(f"  {img_name}: 0 faces detected, skipping")
+                raw = normalize_yolo_output(yolo_output)
+                max_conf = raw[:, 4].max() if raw.shape[1] > 4 else 0.0
+                print(f"  {img_name}: 0 faces detected (max conf={max_conf:.4f}), skipping")
                 skipped_images += 1
                 continue
             elif len(detections) > 1:

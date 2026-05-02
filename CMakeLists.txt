@@ -91,6 +91,8 @@ set(CUDA_SOURCES
 
 add_executable(process_image ${SOURCES} ${CUDA_SOURCES})
 
+target_compile_definitions(process_image PRIVATE TRITON_ENABLE_GPU=1)
+
 target_include_directories(process_image PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${LIBAV_INCLUDE_DIRS}
@@ -169,17 +171,21 @@ add_executable(test_face_matcher
 target_include_directories(test_face_matcher PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${FAISS_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
 )
 target_link_libraries(test_face_matcher PRIVATE
     GTest::gtest_main
     SQLite::SQLite3
     ${FAISS_LIBRARY}
+    CUDA::cudart
+    CUDA::cublas
 )
 
 add_executable(test_triton_client
     tests/test_triton_client.cpp
     src/inference/triton_client.cpp
 )
+target_compile_definitions(test_triton_client PRIVATE TRITON_ENABLE_GPU=1)
 target_include_directories(test_triton_client PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${TRITON_CLIENT_INCLUDE_DIR}
