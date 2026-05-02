@@ -1,0 +1,16 @@
+build/
+*.o
+*.so
+*.a
+*.d
+.cache/
+compile_commands.json
+metrics/*.csv
+faces.db
+__pycache__/
+*.pyc
+.env
+.venv/
+
+# Symlink to local model repository
+models

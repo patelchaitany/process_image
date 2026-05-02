@@ -1,0 +1,23 @@
+metrics:
+  enabled: true
+  output_dir: "./metrics/"
+  format: "csv"
+  flush_interval_ms: 1000
+  buffer_size: 100
+  rotate_size_mb: 100
+
+pipeline:
+  frame_width: 1920
+  frame_height: 1080
+  yolo_input_size: 640
+  arcface_input_size: 112
+  max_faces_per_frame: 32
+
+detection:
+  confidence_threshold: 0.5
+  nms_iou_threshold: 0.45
+
+matching:
+  similarity_threshold: 0.6
+  faiss_ivf_threshold: 1000
+  faiss_nprobe: 16

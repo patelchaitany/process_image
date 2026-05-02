@@ -1,0 +1,3 @@
+tritonclient[grpc]
+numpy
+opencv-python
