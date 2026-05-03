@@ -47,9 +47,11 @@ bool FFmpegSource::open(const std::string& source) {
     avcodec_parameters_to_context(codec_ctx_,
         fmt_ctx_->streams[video_stream_idx_]->codecpar);
 
-    // Use all available CPU cores for decode (slice + frame threading)
+    // Reserve cores for pipeline + prefetch threads; decode doesn't need all CPUs
+    // since PrefetchSource hides the latency anyway.
     int hw_threads = static_cast<int>(std::thread::hardware_concurrency());
-    codec_ctx_->thread_count = (hw_threads > 0) ? hw_threads : 4;
+    int decode_threads = std::max(1, hw_threads - 2);
+    codec_ctx_->thread_count = decode_threads;
     codec_ctx_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
     if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
