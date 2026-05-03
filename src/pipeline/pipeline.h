@@ -2,6 +2,7 @@
 
 #include "utils/config.h"
 #include "frame_source/ffmpeg_source.h"
+#include "frame_source/prefetch_source.h"
 #include "gpu/memory_pool.h"
 #include "gpu/cpu_memory_pool.h"
 #include "gpu/preprocessor.h"
@@ -38,7 +39,7 @@ private:
     bool use_gpu_ = true;
 
     // Shared components
-    std::unique_ptr<FFmpegSource> frame_source_;
+    std::unique_ptr<FrameSource> frame_source_;
     std::unique_ptr<TritonClient> triton_client_;
     std::unique_ptr<FaceDetector> face_detector_;
     std::unique_ptr<FaceRecognizer> face_recognizer_;

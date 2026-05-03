@@ -1,5 +1,7 @@
 #include "ffmpeg_source.h"
 #include <cstdio>
+#include <cstring>
+#include <thread>
 
 FFmpegSource::~FFmpegSource() {
     close();
@@ -45,16 +47,26 @@ bool FFmpegSource::open(const std::string& source) {
     avcodec_parameters_to_context(codec_ctx_,
         fmt_ctx_->streams[video_stream_idx_]->codecpar);
 
+    // Use all available CPU cores for decode (slice + frame threading)
+    int hw_threads = static_cast<int>(std::thread::hardware_concurrency());
+    codec_ctx_->thread_count = (hw_threads > 0) ? hw_threads : 4;
+    codec_ctx_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+
     if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
         fprintf(stderr, "Failed to open codec\n");
         close();
         return false;
     }
 
+    fprintf(stderr, "FFmpeg decoder: %s, %dx%d, %d decode threads\n",
+            codec->name, codec_ctx_->width, codec_ctx_->height,
+            codec_ctx_->thread_count);
+
+    // SWS_FAST_BILINEAR uses SIMD-optimized paths, much faster than SWS_BILINEAR
     sws_ctx_ = sws_getContext(
         codec_ctx_->width, codec_ctx_->height, codec_ctx_->pix_fmt,
         codec_ctx_->width, codec_ctx_->height, AV_PIX_FMT_BGR24,
-        SWS_BILINEAR, nullptr, nullptr, nullptr);
+        SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
 
     if (!sws_ctx_) {
         fprintf(stderr, "Failed to create SwsContext\n");
@@ -90,17 +102,23 @@ bool FFmpegSource::read(Frame& frame) {
     int w = codec_ctx_->width;
     int h = codec_ctx_->height;
     size_t row_bytes = static_cast<size_t>(w) * 3;
+    size_t total_bytes = row_bytes * h;
 
     frame.width = w;
     frame.height = h;
     frame.channels = 3;
     frame.frame_index = frame_count_++;
-    frame.data.resize(static_cast<size_t>(w) * h * 3);
+    frame.data.resize(total_bytes);
 
-    for (int y = 0; y < h; ++y) {
-        memcpy(frame.data.data() + y * row_bytes,
-               bgr_frame_->data[0] + y * bgr_frame_->linesize[0],
-               row_bytes);
+    // Single memcpy when stride matches (common for BGR24 with alignment=1)
+    if (bgr_frame_->linesize[0] == static_cast<int>(row_bytes)) {
+        std::memcpy(frame.data.data(), bgr_frame_->data[0], total_bytes);
+    } else {
+        for (int y = 0; y < h; ++y) {
+            std::memcpy(frame.data.data() + y * row_bytes,
+                        bgr_frame_->data[0] + y * bgr_frame_->linesize[0],
+                        row_bytes);
+        }
     }
 
     return true;
@@ -109,7 +127,7 @@ bool FFmpegSource::read(Frame& frame) {
 bool FFmpegSource::decode_next_frame() {
     while (true) {
         int ret = av_read_frame(fmt_ctx_, pkt_);
-        if (ret < 0) return false;  // EOF or error
+        if (ret < 0) return false;
 
         if (pkt_->stream_index != video_stream_idx_) {
             av_packet_unref(pkt_);

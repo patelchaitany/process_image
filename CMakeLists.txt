@@ -69,6 +69,7 @@ find_package(spdlog QUIET)
 set(SOURCES
     src/main.cpp
     src/frame_source/ffmpeg_source.cpp
+    src/frame_source/prefetch_source.cpp
     src/inference/triton_client.cpp
     src/inference/face_detector.cpp
     src/inference/face_recognizer.cpp
