@@ -62,7 +62,7 @@ bool Pipeline::init(const PipelineConfig& config) {
     printf("Device mode: %s\n", use_gpu_ ? "GPU" : "CPU");
 
     auto raw_source = std::make_unique<FFmpegSource>();
-    frame_source_ = std::make_unique<PrefetchSource>(std::move(raw_source), 3);
+    frame_source_ = std::make_unique<PrefetchSource>(std::move(raw_source), 5);
     if (!frame_source_->open(config_.input_source)) {
         fprintf(stderr, "Failed to open input source: %s\n", config_.input_source.c_str());
         return false;

@@ -42,6 +42,8 @@ private:
     size_t raw_frame_size_ = 0;
     int max_faces_ = 0;
 
+    uint8_t* pinned_staging_ = nullptr;
+
     size_t yolo_input_bytes_ = 0;
     size_t yolo_output_bytes_ = 0;
     size_t arcface_input_bytes_ = 0;

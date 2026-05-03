@@ -1,6 +1,7 @@
 #include "memory_pool.h"
 #include "inference/triton_client.h"
 #include <cstdio>
+#include <cstring>
 
 GPUMemoryPool::~GPUMemoryPool() {
     release();
@@ -37,6 +38,13 @@ bool GPUMemoryPool::init(int frame_width, int frame_height, int max_faces) {
     err = cudaMalloc(&buffers_.arcface_output, arcface_output_bytes_);
     if (err != cudaSuccess) goto fail;
 
+    err = cudaMallocHost(&pinned_staging_, raw_frame_size_);
+    if (err != cudaSuccess) {
+        fprintf(stderr, "Failed to allocate pinned staging buffer (%zu bytes): %s\n",
+                raw_frame_size_, cudaGetErrorString(err));
+        goto fail;
+    }
+
     initialized_ = true;
     return true;
 
@@ -47,6 +55,7 @@ fail:
 }
 
 void GPUMemoryPool::release() {
+    if (pinned_staging_) { cudaFreeHost(pinned_staging_); pinned_staging_ = nullptr; }
     if (buffers_.raw_frame) { cudaFree(buffers_.raw_frame); buffers_.raw_frame = nullptr; }
     if (buffers_.yolo_input) { cudaFree(buffers_.yolo_input); buffers_.yolo_input = nullptr; }
     if (buffers_.arcface_input) { cudaFree(buffers_.arcface_input); buffers_.arcface_input = nullptr; }
@@ -59,8 +68,13 @@ void GPUMemoryPool::release() {
 
 bool GPUMemoryPool::upload_frame(const uint8_t* cpu_data, size_t size, cudaStream_t s) {
     if (!initialized_ || !cpu_data) return false;
+    if (size > raw_frame_size_) return false;
+
     cudaStream_t use_stream = s ? s : stream_;
-    cudaError_t err = cudaMemcpyAsync(buffers_.raw_frame, cpu_data, size,
+
+    std::memcpy(pinned_staging_, cpu_data, size);
+
+    cudaError_t err = cudaMemcpyAsync(buffers_.raw_frame, pinned_staging_, size,
                                        cudaMemcpyHostToDevice, use_stream);
     return err == cudaSuccess;
 }
