@@ -24,6 +24,9 @@ public:
 
     bool upload_frame(const uint8_t* cpu_data, size_t size, cudaStream_t stream = nullptr);
 
+    /// @brief Copy a frame already in GPU memory into the raw_frame buffer (device-to-device).
+    bool copy_gpu_frame(const void* gpu_src, size_t size, cudaStream_t stream = nullptr);
+
     GPUBuffers& buffers() { return buffers_; }
     const GPUBuffers& buffers() const { return buffers_; }
 

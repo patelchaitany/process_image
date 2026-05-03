@@ -90,6 +90,7 @@ set(CUDA_SOURCES
     src/gpu/memory_pool.cu
     src/gpu/preprocessor.cu
     src/postprocess/face_cropper.cu
+    src/frame_source/nvdec_source.cu
 )
 
 add_executable(process_image ${SOURCES} ${CUDA_SOURCES})

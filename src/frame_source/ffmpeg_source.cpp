@@ -1,7 +1,6 @@
 #include "ffmpeg_source.h"
 #include <cstdio>
 #include <cstring>
-#include <thread>
 
 FFmpegSource::~FFmpegSource() {
     close();
@@ -47,12 +46,7 @@ bool FFmpegSource::open(const std::string& source) {
     avcodec_parameters_to_context(codec_ctx_,
         fmt_ctx_->streams[video_stream_idx_]->codecpar);
 
-    // Reserve cores for pipeline + prefetch threads; decode doesn't need all CPUs
-    // since PrefetchSource hides the latency anyway.
-    int hw_threads = static_cast<int>(std::thread::hardware_concurrency());
-    int decode_threads = std::max(1, hw_threads - 2);
-    codec_ctx_->thread_count = decode_threads;
-    codec_ctx_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    codec_ctx_->thread_count = 1;
 
     if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
         fprintf(stderr, "Failed to open codec\n");
@@ -60,9 +54,8 @@ bool FFmpegSource::open(const std::string& source) {
         return false;
     }
 
-    fprintf(stderr, "FFmpeg decoder: %s, %dx%d, %d decode threads\n",
-            codec->name, codec_ctx_->width, codec_ctx_->height,
-            codec_ctx_->thread_count);
+    fprintf(stderr, "FFmpeg CPU decoder: %s, %dx%d (single-threaded fallback)\n",
+            codec->name, codec_ctx_->width, codec_ctx_->height);
 
     // SWS_FAST_BILINEAR uses SIMD-optimized paths, much faster than SWS_BILINEAR
     sws_ctx_ = sws_getContext(

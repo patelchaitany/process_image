@@ -61,11 +61,27 @@ bool Pipeline::init(const PipelineConfig& config) {
     if (!detect_device()) return false;
     printf("Device mode: %s\n", use_gpu_ ? "GPU" : "CPU");
 
-    auto raw_source = std::make_unique<FFmpegSource>();
-    frame_source_ = std::make_unique<PrefetchSource>(std::move(raw_source), 5);
-    if (!frame_source_->open(config_.input_source)) {
-        fprintf(stderr, "Failed to open input source: %s\n", config_.input_source.c_str());
-        return false;
+    // Try NVDEC hardware decode first (GPU path, no CPU threads)
+    if (use_gpu_) {
+        auto nvdec = std::make_unique<NvdecSource>();
+        if (nvdec->open(config_.input_source)) {
+            frame_source_ = std::move(nvdec);
+            printf("Frame source: NVDEC hardware decoder (GPU)\n");
+        } else {
+            fprintf(stderr, "NVDEC unavailable, falling back to CPU decoder\n");
+        }
+    }
+
+    // CPU fallback: single-threaded FFmpeg + PrefetchSource to hide latency
+    if (!frame_source_) {
+        auto cpu_source = std::make_unique<FFmpegSource>();
+        auto prefetched = std::make_unique<PrefetchSource>(std::move(cpu_source), 5);
+        if (!prefetched->open(config_.input_source)) {
+            fprintf(stderr, "Failed to open input source: %s\n", config_.input_source.c_str());
+            return false;
+        }
+        frame_source_ = std::move(prefetched);
+        printf("Frame source: CPU decoder + prefetch\n");
     }
     printf("Input opened: %dx%d @ %.1f fps\n",
            frame_source_->width(), frame_source_->height(), frame_source_->fps());
@@ -268,7 +284,11 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
     CudaEventTimer gpu_timer;
 
     gpu_timer.record_start(stream);
-    memory_pool_->upload_frame(frame.data.data(), frame.size_bytes(), stream);
+    if (frame.on_gpu) {
+        memory_pool_->copy_gpu_frame(frame.gpu_data, frame.size_bytes(), stream);
+    } else {
+        memory_pool_->upload_frame(frame.data.data(), frame.size_bytes(), stream);
+    }
     gpu_timer.record_stop(stream);
     metrics.cpu_to_gpu_ms = gpu_timer.elapsed_ms();
 

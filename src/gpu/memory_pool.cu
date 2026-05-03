@@ -79,6 +79,16 @@ bool GPUMemoryPool::upload_frame(const uint8_t* cpu_data, size_t size, cudaStrea
     return err == cudaSuccess;
 }
 
+bool GPUMemoryPool::copy_gpu_frame(const void* gpu_src, size_t size, cudaStream_t s) {
+    if (!initialized_ || !gpu_src) return false;
+    if (size > raw_frame_size_) return false;
+
+    cudaStream_t use_stream = s ? s : stream_;
+    cudaError_t err = cudaMemcpyAsync(buffers_.raw_frame, gpu_src, size,
+                                       cudaMemcpyDeviceToDevice, use_stream);
+    return err == cudaSuccess;
+}
+
 bool GPUMemoryPool::register_triton_shm(TritonClient& client) {
     if (!initialized_ || shm_registered_) return shm_registered_;
 

@@ -2,6 +2,7 @@
 
 #include "utils/config.h"
 #include "frame_source/ffmpeg_source.h"
+#include "frame_source/nvdec_source.h"
 #include "frame_source/prefetch_source.h"
 #include "gpu/memory_pool.h"
 #include "gpu/cpu_memory_pool.h"
