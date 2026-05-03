@@ -3,7 +3,7 @@ set -euo pipefail
 
 TRITON_CLIENT_VERSION="v2.68.0"
 TRITON_CLIENT_TAR="${TRITON_CLIENT_VERSION}_ubuntu2404.clients.tar.gz"
-TRITON_CLIENT_URL="https://github.com/triton-inference-server/client/releases/download/${TRITON_CLIENT_VERSION}/${TRITON_CLIENT_TAR}"
+TRITON_CLIENT_URL="https://github.com/triton-inference-server/server/releases/download/${TRITON_CLIENT_VERSION}/${TRITON_CLIENT_TAR}"
 TRITON_INSTALL_DIR="/opt/tritonserver/client"
 
 echo "==========================================="

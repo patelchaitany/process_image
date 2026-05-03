@@ -26,6 +26,10 @@ struct PipelineConfig {
     int faiss_nprobe = 16;
     int faiss_ivf_threshold = 1000;
 
+    std::string bbox_csv = "./output/detections.csv";
+    int bbox_csv_rotate_mb = 100;
+    bool console_verbose = true;
+
     std::string config_file;
 };
 
@@ -96,6 +100,10 @@ inline PipelineConfig parse_args(int argc, char* argv[]) {
             config.yolo_model = argv[++i];
         } else if (arg == "--arcface-model" && i + 1 < argc) {
             config.arcface_model = argv[++i];
+        } else if (arg == "--bbox-csv" && i + 1 < argc) {
+            config.bbox_csv = argv[++i];
+        } else if (arg == "--no-console") {
+            config.console_verbose = false;
         } else if (arg == "--config" && i + 1 < argc) {
             config.config_file = argv[++i];
         } else if (arg == "--help" || arg == "-h") {
@@ -110,6 +118,8 @@ inline PipelineConfig parse_args(int argc, char* argv[]) {
                 "  --db <path>              SQLite face database path (default: ./faces.db)\n"
                 "  --confidence <float>      YOLO detection confidence threshold (default: 0.5)\n"
                 "  --match-threshold <float> Face match similarity threshold (default: 0.6)\n"
+                "  --bbox-csv <path>         Per-detection bbox CSV path (default: ./output/detections.csv)\n"
+                "  --no-console              Suppress per-frame console output\n"
                 "  --device <gpu|cpu|auto>   Force device mode (default: auto-detect)\n"
                 "  --yolo-model <name>       Triton model name for detection (default: yolo26_face)\n"
                 "  --arcface-model <name>    Triton model name for recognition (default: arcface)\n"

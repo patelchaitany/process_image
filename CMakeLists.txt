@@ -81,6 +81,8 @@ set(SOURCES
     src/metrics/metrics_logger.cpp
     src/gpu/cpu_memory_pool.cpp
     src/gpu/cpu_preprocessor.cpp
+    src/output/csv_result_writer.cpp
+    src/output/console_result_writer.cpp
 )
 
 set(CUDA_SOURCES

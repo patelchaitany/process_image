@@ -15,6 +15,7 @@
 #include "postprocess/nms.h"
 #include "postprocess/face_cropper.h"
 #include "pipeline/result_handler.h"
+#include "output/result_writer.h"
 #include "metrics/metrics_logger.h"
 #include "metrics/frame_metrics.h"
 #include "utils/timer.h"
@@ -60,6 +61,8 @@ private:
     void process_frame_gpu(Frame& frame, FrameMetrics& metrics);
     void process_frame_cpu(Frame& frame, FrameMetrics& metrics);
     std::string utc_timestamp() const;
+
+    FrameResult make_result(uint64_t frame_id) const;
 
     std::vector<Detection> decode_raw_detections(
         const std::vector<RawDetection>& raw, float scale, int pad_x, int pad_y,

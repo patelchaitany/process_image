@@ -1,4 +1,6 @@
 #include "pipeline/pipeline.h"
+#include "output/console_result_writer.h"
+#include "output/csv_result_writer.h"
 #include <cstdio>
 #include <algorithm>
 #include <chrono>
@@ -43,6 +45,14 @@ std::string Pipeline::utc_timestamp() const {
     ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S") << '.' << std::setfill('0')
        << std::setw(3) << ms.count() << 'Z';
     return ss.str();
+}
+
+FrameResult Pipeline::make_result(uint64_t frame_id) const {
+    FrameResult r;
+    r.frame_id = frame_id;
+    r.timestamp_utc = utc_timestamp();
+    r.source_id = config_.input_source;
+    return r;
 }
 
 bool Pipeline::init(const PipelineConfig& config) {
@@ -123,8 +133,23 @@ bool Pipeline::init(const PipelineConfig& config) {
     }
 
     face_cropper_ = std::make_unique<FaceCropper>();
-    result_handler_ = std::make_unique<ResultHandler>();
 
+    // --- Result output writers ---
+    result_handler_ = std::make_unique<ResultHandler>();
+    result_handler_->addWriter(
+        std::make_unique<ConsoleResultWriter>(config_.console_verbose));
+
+    if (!config_.bbox_csv.empty()) {
+        result_handler_->addWriter(
+            std::make_unique<CsvResultWriter>(config_.bbox_csv, config_.bbox_csv_rotate_mb));
+    }
+
+    if (!result_handler_->openAll()) {
+        fprintf(stderr, "Failed to open one or more result writers\n");
+        return false;
+    }
+
+    // --- Metrics ---
     metrics_logger_ = std::make_unique<MetricsLogger>();
     std::string metrics_dir = config_.output_csv;
     auto last_slash = metrics_dir.rfind('/');
@@ -241,13 +266,11 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
     cudaStream_t stream = memory_pool_->stream();
     CudaEventTimer gpu_timer;
 
-    // Upload to GPU
     gpu_timer.record_start(stream);
     memory_pool_->upload_frame(frame.data.data(), frame.size_bytes(), stream);
     gpu_timer.record_stop(stream);
     metrics.cpu_to_gpu_ms = gpu_timer.elapsed_ms();
 
-    // YOLO preprocessing
     gpu_timer.record_start(stream);
     preprocessor_->preprocess_yolo(
         memory_pool_->buffers().raw_frame,
@@ -257,7 +280,6 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
     gpu_timer.record_stop(stream);
     metrics.preprocess_total_ms = gpu_timer.elapsed_ms();
 
-    // YOLO inference via Triton CUDA SHM
     CpuTimer yolo_timer;
     yolo_timer.start();
     std::vector<RawDetection> raw_detections;
@@ -272,7 +294,6 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
 
     if (!yolo_ok) return;
 
-    // NMS
     CpuTimer nms_timer;
     nms_timer.start();
     PreprocessParams params = preprocessor_->last_params();
@@ -285,13 +306,11 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
     metrics.faces_detected = static_cast<int>(detections.size());
 
     if (detections.empty()) {
-        FrameResult result;
-        result.frame_id = frame.frame_index;
+        FrameResult result = make_result(frame.frame_index);
         result_handler_->handle(result);
         return;
     }
 
-    // Face cropping + ArcFace preprocessing
     gpu_timer.record_start(stream);
     face_cropper_->crop_and_preprocess(
         memory_pool_->buffers().raw_frame, detections,
@@ -300,7 +319,6 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
     gpu_timer.record_stop(stream);
     metrics.face_crop_ms = gpu_timer.elapsed_ms();
 
-    // ArcFace inference
     CpuTimer arcface_timer;
     arcface_timer.start();
     std::vector<std::vector<float>> embeddings;
@@ -314,35 +332,30 @@ void Pipeline::process_frame_gpu(Frame& frame, FrameMetrics& metrics) {
     metrics.triton_arcface_compute_ms = arcfaceStats.computeTimeNs / 1e6f;
 
     if (!arcface_ok) {
-        FrameResult result;
-        result.frame_id = frame.frame_index;
+        FrameResult result = make_result(frame.frame_index);
         result.detections = detections;
         result_handler_->handle(result);
         return;
     }
 
-    // FAISS matching
     CpuTimer match_timer;
     match_timer.start();
     std::vector<MatchResult> matches = face_matcher_->match(embeddings);
     match_timer.stop();
     metrics.faiss_search_ms = match_timer.elapsed_ms();
 
-    FrameResult result;
-    result.frame_id = frame.frame_index;
+    FrameResult result = make_result(frame.frame_index);
     result.detections = detections;
     result.matches = matches;
     result_handler_->handle(result);
 }
 
 void Pipeline::process_frame_cpu(Frame& frame, FrameMetrics& metrics) {
-    // Copy frame into CPU pool
     {
         ScopedCpuTimer t(metrics.cpu_to_gpu_ms);
         cpu_memory_pool_->upload_frame(frame.data.data(), frame.size_bytes());
     }
 
-    // YOLO preprocessing
     {
         ScopedCpuTimer t(metrics.preprocess_total_ms);
         cpu_preprocessor_->preprocess_yolo(
@@ -351,7 +364,6 @@ void Pipeline::process_frame_cpu(Frame& frame, FrameMetrics& metrics) {
             frame.width, frame.height, config_.yolo_input_size);
     }
 
-    // YOLO inference via inline gRPC
     CpuTimer yolo_timer;
     yolo_timer.start();
     std::vector<RawDetection> raw_detections;
@@ -366,7 +378,6 @@ void Pipeline::process_frame_cpu(Frame& frame, FrameMetrics& metrics) {
 
     if (!yolo_ok) return;
 
-    // NMS
     CpuTimer nms_timer;
     nms_timer.start();
     CPUPreprocessParams params = cpu_preprocessor_->last_params();
@@ -379,13 +390,11 @@ void Pipeline::process_frame_cpu(Frame& frame, FrameMetrics& metrics) {
     metrics.faces_detected = static_cast<int>(detections.size());
 
     if (detections.empty()) {
-        FrameResult result;
-        result.frame_id = frame.frame_index;
+        FrameResult result = make_result(frame.frame_index);
         result_handler_->handle(result);
         return;
     }
 
-    // Face cropping + ArcFace preprocessing (CPU path)
     {
         ScopedCpuTimer t(metrics.face_crop_ms);
         std::vector<float> bboxes;
@@ -403,7 +412,6 @@ void Pipeline::process_frame_cpu(Frame& frame, FrameMetrics& metrics) {
             frame.width, frame.height);
     }
 
-    // ArcFace inference via inline gRPC
     CpuTimer arcface_timer;
     arcface_timer.start();
     std::vector<std::vector<float>> embeddings;
@@ -417,28 +425,28 @@ void Pipeline::process_frame_cpu(Frame& frame, FrameMetrics& metrics) {
     metrics.triton_arcface_compute_ms = arcfaceStats.computeTimeNs / 1e6f;
 
     if (!arcface_ok) {
-        FrameResult result;
-        result.frame_id = frame.frame_index;
+        FrameResult result = make_result(frame.frame_index);
         result.detections = detections;
         result_handler_->handle(result);
         return;
     }
 
-    // CPU FAISS matching
     CpuTimer match_timer;
     match_timer.start();
     std::vector<MatchResult> matches = cpu_face_matcher_->match(embeddings);
     match_timer.stop();
     metrics.faiss_search_ms = match_timer.elapsed_ms();
 
-    FrameResult result;
-    result.frame_id = frame.frame_index;
+    FrameResult result = make_result(frame.frame_index);
     result.detections = detections;
     result.matches = matches;
     result_handler_->handle(result);
 }
 
 void Pipeline::shutdown() {
+    if (result_handler_) {
+        result_handler_->closeAll();
+    }
     if (metrics_logger_) {
         metrics_logger_->shutdown();
         metrics_logger_.reset();
