@@ -31,7 +31,9 @@ sudo apt-get install -y \
     libyaml-cpp-dev \
     libopencv-dev \
     libspdlog-dev \
-    libfaiss-dev
+    libgrpc++-dev \
+    protobuf-compiler-grpc \
+    libcurl4-openssl-dev
 
 # ── 2. Triton C++ Client SDK ─────────────────────────────────────────
 echo ""

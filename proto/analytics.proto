@@ -1,0 +1,64 @@
+// Video Analytics Service — gRPC API (videoanalytics.v1)
+//
+// This API manages video analytics sessions over streaming or file sources (e.g. RTSP or MP4).
+// Clients start a session with optional detection/matching thresholds and frame-rate limits,
+// receive a session identifier, and may poll status or list sessions. Results are delivered
+// asynchronously via the configured webhook URL (callback_url).
+
+syntax = "proto3";
+package videoanalytics.v1;
+
+service VideoAnalytics {
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
+  rpc StopSession(StopSessionRequest) returns (StopSessionResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc GetSessionStatus(GetSessionStatusRequest) returns (SessionStatus);
+}
+
+message StartSessionRequest {
+  string source_uri = 1;       // RTSP URL or MP4 file path
+  string callback_url = 2;     // Webhook URL for result delivery
+  string session_name = 3;     // Optional human-readable name
+  SessionConfig config = 4;    // Optional per-session overrides
+}
+
+message SessionConfig {
+  float confidence_threshold = 1;  // YOLO detection threshold (0 = use service default)
+  float match_threshold = 2;       // Face match similarity threshold (0 = use default)
+  int32 max_fps = 3;               // Frame rate limit (0 = no limit)
+}
+
+message StartSessionResponse {
+  string session_id = 1;       // UUID assigned by the service
+  string status = 2;           // "running" or "error"
+  string error = 3;            // Error message if status == "error"
+}
+
+message StopSessionRequest {
+  string session_id = 1;
+}
+
+message StopSessionResponse {
+  bool success = 1;
+  uint64 frames_processed = 2;
+}
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated SessionStatus sessions = 1;
+}
+
+message GetSessionStatusRequest {
+  string session_id = 1;
+}
+
+message SessionStatus {
+  string session_id = 1;
+  string session_name = 2;
+  string source_uri = 3;
+  string state = 4;            // "starting", "running", "stopped", "error", "finished"
+  uint64 frames_processed = 5;
+  uint64 frames_dropped = 6;
+  double uptime_seconds = 7;
+}

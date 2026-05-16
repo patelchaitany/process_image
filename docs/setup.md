@@ -2,12 +2,14 @@
 
 ## Platform Support
 
-| Platform | GPU Mode (~13ms) | CPU Mode (~100-200ms) |
-|----------|:-----------------:|:---------------------:|
-| Linux + NVIDIA T4/A100 | Yes | Yes |
-| Linux (no GPU) | No | Yes |
-| macOS (Apple Silicon / Intel) | No | Yes |
-| Docker (any host) | Depends on GPU passthrough | Yes |
+
+| Platform                      | GPU Mode (~13ms)           | CPU Mode (~100-200ms) |
+| ----------------------------- | -------------------------- | --------------------- |
+| Linux + NVIDIA T4/A100        | Yes                        | Yes                   |
+| Linux (no GPU)                | No                         | Yes                   |
+| macOS (Apple Silicon / Intel) | No                         | Yes                   |
+| Docker (any host)             | Depends on GPU passthrough | Yes                   |
+
 
 macOS does not support CUDA. The pipeline auto-detects this and falls back to CPU mode using ONNX Runtime (via Triton) and OpenCV for preprocessing.
 
@@ -67,6 +69,7 @@ docker run --rm -p 8000:8000 -p 8001:8001 -p 8002:8002 \
 ```
 
 Make sure your model configs use `KIND_CPU`:
+
 ```
 instance_group [{ kind: KIND_CPU }]
 ```
@@ -309,11 +312,14 @@ python3 tools/enroll_faces.py --faces-dir ./test_faces/ --db ./test.db --triton 
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
+
+| Issue                                 | Solution                                                    |
+| ------------------------------------- | ----------------------------------------------------------- |
 | `CMake Error: No CUDA toolkits found` | Expected on Mac. Use `-DENABLE_CUDA=OFF` or run in CPU mode |
-| `Triton connection refused` | Ensure Docker container is running, check port 8001 |
-| `Model not found` | Verify model_repository path and model names match config |
-| `FFmpeg: No such file or directory` | Ensure input file path is correct and readable |
-| `FAISS not found` | Install via conda (`faiss-cpu` on Mac) or from source |
-| `Low FPS in CPU mode` | Expected (~5-10 fps). Use GPU for real-time performance |
+| `Triton connection refused`           | Ensure Docker container is running, check port 8001         |
+| `Model not found`                     | Verify model_repository path and model names match config   |
+| `FFmpeg: No such file or directory`   | Ensure input file path is correct and readable              |
+| `FAISS not found`                     | Install via conda (`faiss-cpu` on Mac) or from source       |
+| `Low FPS in CPU mode`                 | Expected (~5-10 fps). Use GPU for real-time performance     |
+
+

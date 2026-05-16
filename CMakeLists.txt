@@ -65,9 +65,8 @@ find_package(OpenCV QUIET COMPONENTS core imgproc imgcodecs dnn)
 # spdlog (optional)
 find_package(spdlog QUIET)
 
-# Source files
-set(SOURCES
-    src/main.cpp
+# Pipeline library sources (shared between CLI and service targets)
+set(PIPELINE_SOURCES
     src/frame_source/ffmpeg_source.cpp
     src/frame_source/prefetch_source.cpp
     src/inference/triton_client.cpp
@@ -84,6 +83,12 @@ set(SOURCES
     src/gpu/cpu_preprocessor.cpp
     src/output/csv_result_writer.cpp
     src/output/console_result_writer.cpp
+)
+
+# CLI-only sources
+set(SOURCES
+    src/main.cpp
+    ${PIPELINE_SOURCES}
 )
 
 set(CUDA_SOURCES
@@ -135,6 +140,102 @@ if(spdlog_FOUND)
 endif()
 
 target_link_directories(process_image PRIVATE ${LIBAV_LIBRARY_DIRS})
+
+# =============================================================================
+# Video Analytics Service (gRPC)
+# =============================================================================
+find_package(Protobuf QUIET)
+find_package(gRPC QUIET)
+find_package(absl QUIET)
+find_package(CURL QUIET)
+
+if(Protobuf_FOUND AND gRPC_FOUND AND CURL_FOUND)
+    message(STATUS "Building video_analytics_service (gRPC + Protobuf + CURL found)")
+
+    # Proto code generation
+    set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/analytics.proto")
+    set(PROTO_GEN_DIR "${CMAKE_BINARY_DIR}/proto_gen")
+    file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
+
+    set(PROTO_SRCS "${PROTO_GEN_DIR}/analytics.pb.cc")
+    set(PROTO_HDRS "${PROTO_GEN_DIR}/analytics.pb.h")
+    set(GRPC_SRCS  "${PROTO_GEN_DIR}/analytics.grpc.pb.cc")
+    set(GRPC_HDRS  "${PROTO_GEN_DIR}/analytics.grpc.pb.h")
+
+    find_program(PROTOC_EXEC protoc)
+    find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin)
+
+    add_custom_command(
+        OUTPUT ${PROTO_SRCS} ${PROTO_HDRS} ${GRPC_SRCS} ${GRPC_HDRS}
+        COMMAND ${PROTOC_EXEC}
+            --proto_path=${CMAKE_SOURCE_DIR}/proto
+            --cpp_out=${PROTO_GEN_DIR}
+            --grpc_out=${PROTO_GEN_DIR}
+            --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN}
+            ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE}
+        COMMENT "Generating gRPC/Protobuf sources from analytics.proto"
+    )
+
+    set(SERVICE_SOURCES
+        src/service_main.cpp
+        src/service/shared_resources.cpp
+        src/service/pipeline_session.cpp
+        src/service/session_manager.cpp
+        src/service/grpc_server.cpp
+        src/output/webhook_result_writer.cpp
+        ${PIPELINE_SOURCES}
+        ${PROTO_SRCS}
+        ${GRPC_SRCS}
+    )
+
+    add_executable(video_analytics_service ${SERVICE_SOURCES} ${CUDA_SOURCES})
+
+    target_compile_definitions(video_analytics_service PRIVATE TRITON_ENABLE_GPU=1)
+
+    target_include_directories(video_analytics_service PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${PROTO_GEN_DIR}
+        ${LIBAV_INCLUDE_DIRS}
+        ${TRITON_CLIENT_INCLUDE_DIR}
+        ${FAISS_INCLUDE_DIR}
+        ${YAML_CPP_INCLUDE_DIR}
+    )
+
+    target_link_libraries(video_analytics_service PRIVATE
+        ${LIBAV_LIBRARIES}
+        SQLite::SQLite3
+        ${YAML_CPP_LIBRARY}
+        ${TRITON_GRPC_CLIENT}
+        ${FAISS_LIBRARY}
+        CUDA::cudart
+        pthread
+        gRPC::grpc++
+        gRPC::gpr
+        protobuf::libprotobuf
+        CURL::libcurl
+        absl::base
+        absl::synchronization
+    )
+
+    if(FAISS_GPU_LIBRARY)
+        target_link_libraries(video_analytics_service PRIVATE ${FAISS_GPU_LIBRARY})
+    endif()
+
+    if(OpenCV_FOUND)
+        target_compile_definitions(video_analytics_service PRIVATE HAS_OPENCV=1)
+        target_link_libraries(video_analytics_service PRIVATE ${OpenCV_LIBS})
+        target_include_directories(video_analytics_service PRIVATE ${OpenCV_INCLUDE_DIRS})
+    endif()
+
+    if(YAML_CPP_INCLUDE_DIR AND YAML_CPP_LIBRARY)
+        target_compile_definitions(video_analytics_service PRIVATE HAS_YAML_CPP=1)
+    endif()
+
+    target_link_directories(video_analytics_service PRIVATE ${LIBAV_LIBRARY_DIRS})
+else()
+    message(STATUS "Skipping video_analytics_service (requires gRPC, Protobuf, CURL)")
+endif()
 
 # Google Test
 include(FetchContent)
