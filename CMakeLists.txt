@@ -144,15 +144,18 @@ target_link_directories(process_image PRIVATE ${LIBAV_LIBRARY_DIRS})
 # =============================================================================
 # Video Analytics Service (gRPC)
 # =============================================================================
-find_package(Protobuf QUIET)
-find_package(gRPC QUIET)
-find_package(absl QUIET)
+# Use pkg-config IMPORTED_TARGET for gRPC/protobuf. This avoids ABI mismatches
+# between Conda headers (absl lts_20230125) and system libs (absl lts_20220623).
+pkg_check_modules(GRPC_PC IMPORTED_TARGET grpc++)
+pkg_check_modules(PROTOBUF_PC IMPORTED_TARGET protobuf)
 find_package(CURL QUIET)
 
-if(Protobuf_FOUND AND gRPC_FOUND AND CURL_FOUND)
-    message(STATUS "Building video_analytics_service (gRPC + Protobuf + CURL found)")
+if(GRPC_PC_FOUND AND PROTOBUF_PC_FOUND AND CURL_FOUND)
+    message(STATUS "Building video_analytics_service")
+    message(STATUS "  gRPC includes: ${GRPC_PC_INCLUDE_DIRS}")
+    message(STATUS "  gRPC libs:     ${GRPC_PC_LIBRARIES}")
+    message(STATUS "  Protobuf libs: ${PROTOBUF_PC_LIBRARIES}")
 
-    # Proto code generation
     set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/analytics.proto")
     set(PROTO_GEN_DIR "${CMAKE_BINARY_DIR}/proto_gen")
     file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
@@ -193,9 +196,16 @@ if(Protobuf_FOUND AND gRPC_FOUND AND CURL_FOUND)
 
     target_compile_definitions(video_analytics_service PRIVATE TRITON_ENABLE_GPU=1)
 
-    target_include_directories(video_analytics_service PRIVATE
+    # Project + gRPC/protobuf includes first (regular -I, searched first)
+    target_include_directories(video_analytics_service BEFORE PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${PROTO_GEN_DIR}
+        ${GRPC_PC_INCLUDE_DIRS}
+        ${PROTOBUF_PC_INCLUDE_DIRS}
+    )
+    # Conda/external includes as SYSTEM (-isystem, searched AFTER -I dirs).
+    # Prevents Conda's grpc/absl headers from shadowing the system ones.
+    target_include_directories(video_analytics_service SYSTEM PRIVATE
         ${LIBAV_INCLUDE_DIRS}
         ${TRITON_CLIENT_INCLUDE_DIR}
         ${FAISS_INCLUDE_DIR}
@@ -210,13 +220,12 @@ if(Protobuf_FOUND AND gRPC_FOUND AND CURL_FOUND)
         ${FAISS_LIBRARY}
         CUDA::cudart
         pthread
-        gRPC::grpc++
-        gRPC::gpr
-        protobuf::libprotobuf
+        PkgConfig::GRPC_PC
+        PkgConfig::PROTOBUF_PC
         CURL::libcurl
-        absl::base
-        absl::synchronization
     )
+
+    target_link_directories(video_analytics_service PRIVATE ${LIBAV_LIBRARY_DIRS})
 
     if(FAISS_GPU_LIBRARY)
         target_link_libraries(video_analytics_service PRIVATE ${FAISS_GPU_LIBRARY})
@@ -225,14 +234,12 @@ if(Protobuf_FOUND AND gRPC_FOUND AND CURL_FOUND)
     if(OpenCV_FOUND)
         target_compile_definitions(video_analytics_service PRIVATE HAS_OPENCV=1)
         target_link_libraries(video_analytics_service PRIVATE ${OpenCV_LIBS})
-        target_include_directories(video_analytics_service PRIVATE ${OpenCV_INCLUDE_DIRS})
+        target_include_directories(video_analytics_service SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
     endif()
 
     if(YAML_CPP_INCLUDE_DIR AND YAML_CPP_LIBRARY)
         target_compile_definitions(video_analytics_service PRIVATE HAS_YAML_CPP=1)
     endif()
-
-    target_link_directories(video_analytics_service PRIVATE ${LIBAV_LIBRARY_DIRS})
 else()
     message(STATUS "Skipping video_analytics_service (requires gRPC, Protobuf, CURL)")
 endif()
