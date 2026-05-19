@@ -196,15 +196,30 @@ if(GRPC_PC_FOUND AND PROTOBUF_PC_FOUND AND CURL_FOUND)
 
     target_compile_definitions(video_analytics_service PRIVATE TRITON_ENABLE_GPU=1)
 
-    # Project + gRPC/protobuf includes first (regular -I, searched first)
+    # ── Triton / system gRPC ABI conflict resolution ──────────────────
+    # Triton Client SDK headers (grpc_client.h → grpc_service.grpc.pb.h →
+    # grpcpp/) use absl::lts_20230125. System gRPC shared libs on Ubuntu
+    # 24.04 use absl::debian3 — different mangled symbols, won't link.
+    # Triton's headers also require a newer grpcpp layout (e.g.
+    # grpcpp/impl/proto_utils.h) absent from system gRPC 1.51.1.
+    #
+    # Fix: compile with Triton's full include dir (the only compatible
+    # headers) and link Triton's matching static gRPC/absl archives
+    # instead of PkgConfig::GRPC_PC.
+    get_filename_component(_triton_lib
+        "${TRITON_CLIENT_INCLUDE_DIR}/../lib" ABSOLUTE)
+    file(GLOB _triton_grpc_a
+        "${_triton_lib}/libgrpc++.a"
+        "${_triton_lib}/libgrpc.a"
+        "${_triton_lib}/libgpr.a"
+        "${_triton_lib}/libgrpc_authorization_provider.a"
+    )
+    file(GLOB _triton_absl_a "${_triton_lib}/libabsl_*.a")
+
     target_include_directories(video_analytics_service BEFORE PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${PROTO_GEN_DIR}
-        ${GRPC_PC_INCLUDE_DIRS}
-        ${PROTOBUF_PC_INCLUDE_DIRS}
     )
-    # Conda/external includes as SYSTEM (-isystem, searched AFTER -I dirs).
-    # Prevents Conda's grpc/absl headers from shadowing the system ones.
     target_include_directories(video_analytics_service SYSTEM PRIVATE
         ${LIBAV_INCLUDE_DIRS}
         ${TRITON_CLIENT_INCLUDE_DIR}
@@ -220,9 +235,10 @@ if(GRPC_PC_FOUND AND PROTOBUF_PC_FOUND AND CURL_FOUND)
         ${FAISS_LIBRARY}
         CUDA::cudart
         pthread
-        PkgConfig::GRPC_PC
+        -Wl,--start-group ${_triton_grpc_a} ${_triton_absl_a} -Wl,--end-group
         PkgConfig::PROTOBUF_PC
         CURL::libcurl
+        re2 cares address_sorting upb z ssl crypto
     )
 
     target_link_directories(video_analytics_service PRIVATE ${LIBAV_LIBRARY_DIRS})

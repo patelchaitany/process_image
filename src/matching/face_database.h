@@ -20,7 +20,8 @@ public:
     bool is_open() const { return db_ != nullptr; }
 
     bool create_tables();
-    bool add_face(const std::string& name, const std::vector<float>& embedding);
+    bool add_face(const std::string& name, const std::vector<float>& embedding,
+                  int64_t* out_id = nullptr);
     std::vector<FaceRecord> load_all();
     int count();
 

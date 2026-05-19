@@ -47,7 +47,8 @@ bool FaceDatabase::create_tables() {
     return true;
 }
 
-bool FaceDatabase::add_face(const std::string& name, const std::vector<float>& embedding) {
+bool FaceDatabase::add_face(const std::string& name, const std::vector<float>& embedding,
+                            int64_t* out_id) {
     if (!db_) return false;
 
     const char* sql = "INSERT INTO faces (name, embedding) VALUES (?, ?);";
@@ -61,6 +62,10 @@ bool FaceDatabase::add_face(const std::string& name, const std::vector<float>& e
 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
+
+    if (rc == SQLITE_DONE && out_id) {
+        *out_id = sqlite3_last_insert_rowid(static_cast<sqlite3*>(db_));
+    }
     return rc == SQLITE_DONE;
 }
 

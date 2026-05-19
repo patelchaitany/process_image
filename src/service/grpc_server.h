@@ -44,6 +44,16 @@ public:
                                   const videoanalytics::v1::GetSessionStatusRequest* req,
                                   videoanalytics::v1::SessionStatus* resp) override;
 
+    /// @brief Registers a new face from an encoded image and adds it to the live gallery.
+    grpc::Status RegisterFace(grpc::ServerContext* ctx,
+                              const videoanalytics::v1::RegisterFaceRequest* req,
+                              videoanalytics::v1::RegisterFaceResponse* resp) override;
+
+    /// @brief Runs face detection on an image and returns bounding boxes.
+    grpc::Status DetectFaces(grpc::ServerContext* ctx,
+                             const videoanalytics::v1::DetectFacesRequest* req,
+                             videoanalytics::v1::DetectFacesResponse* resp) override;
+
 private:
     /// @brief Copies session snapshot fields present on the wire into @p dst.
     void fillProtoStatus(const SessionStatus& src, videoanalytics::v1::SessionStatus* dst) const;

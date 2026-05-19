@@ -13,6 +13,8 @@ service VideoAnalytics {
   rpc StopSession(StopSessionRequest) returns (StopSessionResponse);
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
   rpc GetSessionStatus(GetSessionStatusRequest) returns (SessionStatus);
+  rpc RegisterFace(RegisterFaceRequest) returns (RegisterFaceResponse);
+  rpc DetectFaces(DetectFacesRequest) returns (DetectFacesResponse);
 }
 
 message StartSessionRequest {
@@ -61,4 +63,40 @@ message SessionStatus {
   uint64 frames_processed = 5;
   uint64 frames_dropped = 6;
   double uptime_seconds = 7;
+}
+
+message DetectFacesRequest {
+  bytes image_data = 1;        // JPEG/PNG encoded image
+  float confidence_threshold = 2;  // Override detection threshold (0 = use service default)
+}
+
+message DetectFacesResponse {
+  bool success = 1;
+  repeated FaceDetection detections = 2;
+  int32 image_width = 3;      // Original image width in pixels
+  int32 image_height = 4;     // Original image height in pixels
+  string error = 5;            // Error message when success == false
+}
+
+message FaceDetection {
+  BoundingBox bbox = 1;
+  float confidence = 2;
+}
+
+message BoundingBox {
+  float x1 = 1;               // Left edge x-coordinate
+  float y1 = 2;               // Top edge y-coordinate
+  float x2 = 3;               // Right edge x-coordinate
+  float y2 = 4;               // Bottom edge y-coordinate
+}
+
+message RegisterFaceRequest {
+  string name = 1;             // Person's name for the face gallery
+  bytes image_data = 2;        // JPEG/PNG encoded image containing exactly one face
+}
+
+message RegisterFaceResponse {
+  bool success = 1;
+  int64 person_id = 2;         // Database row ID assigned to the new face
+  string error = 3;            // Error message when success == false
 }

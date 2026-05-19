@@ -17,6 +17,8 @@ Video Analytics Service exposes a **gRPC API** for managing face detection and r
   - [StopSession](#stopsession)
   - [ListSessions](#listsessions)
   - [GetSessionStatus](#getsessionstatus)
+  - [RegisterFace](#registerface)
+  - [DetectFaces](#detectfaces)
 - [Webhook Result Delivery](#webhook-result-delivery)
 - [Data Types](#data-types)
 - [Error Handling](#error-handling)
@@ -165,6 +167,101 @@ See [SessionStatus](#sessionstatus) below. If the session ID is not found, the r
 
 ---
 
+### RegisterFace
+
+Registers a new face into the gallery from an encoded image (JPEG or PNG). The service runs YOLO face detection and ArcFace embedding extraction internally via its existing Triton connection, writes the embedding to the SQLite database, and updates the live FAISS index so the face is immediately matchable by all running sessions — no restart required.
+
+The image must contain exactly one face. If zero or multiple faces are detected, the request fails.
+
+| | |
+|---|---|
+| **Method** | `videoanalytics.v1.VideoAnalytics/RegisterFace` |
+| **Request** | `RegisterFaceRequest` |
+| **Response** | `RegisterFaceResponse` |
+
+#### Request Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Person's name to associate with the face in the gallery. |
+| `image_data` | bytes | Yes | JPEG or PNG encoded image containing exactly one face. |
+
+#### Response Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | bool | `true` if the face was enrolled successfully. |
+| `person_id` | int64 | Database row ID assigned to the new face entry. `-1` on failure. |
+| `error` | string | Error message when `success` is `false`. Empty on success. |
+
+#### Error Conditions
+
+| Condition | `success` | `error` |
+|---|---|---|
+| Empty `name` | `false` | `"name is required"` |
+| Empty `image_data` | `false` | `"image_data is required"` |
+| Image cannot be decoded | `false` | `"failed to decode image (expected JPEG or PNG)"` |
+| No face found in image | `false` | `"no face detected in image"` |
+| Multiple faces in image | `false` | `"multiple faces detected (N); image must contain exactly one face"` |
+| Triton detection failure | `false` | `"face detection inference failed"` |
+| Triton recognition failure | `false` | `"face recognition inference failed"` |
+| Database write failure | `false` | `"failed to write face to database"` |
+
+---
+
+### DetectFaces
+
+Runs face detection on an encoded image (JPEG or PNG) and returns bounding boxes with confidence scores. This is a stateless, read-only call — no database writes, no embedding extraction. Use it to preview detected faces before calling `RegisterFace`.
+
+| | |
+|---|---|
+| **Method** | `videoanalytics.v1.VideoAnalytics/DetectFaces` |
+| **Request** | `DetectFacesRequest` |
+| **Response** | `DetectFacesResponse` |
+
+#### Request Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `image_data` | bytes | Yes | JPEG or PNG encoded image. |
+| `confidence_threshold` | float | No | Override YOLO detection confidence threshold. `0` uses the service default (0.5). |
+
+#### Response Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | bool | `true` if detection ran successfully (even if zero faces found). |
+| `detections` | repeated `FaceDetection` | Array of detected faces. Empty if no faces found. |
+| `image_width` | int32 | Width of the decoded image in pixels. |
+| `image_height` | int32 | Height of the decoded image in pixels. |
+| `error` | string | Error message when `success` is `false`. Empty on success. |
+
+#### FaceDetection
+
+| Field | Type | Description |
+|---|---|---|
+| `bbox` | `BoundingBox` | Face bounding box in original image pixel coordinates. |
+| `confidence` | float | YOLO detection confidence score (0.0 to 1.0). |
+
+#### BoundingBox
+
+| Field | Type | Description |
+|---|---|---|
+| `x1` | float | Left edge x-coordinate. |
+| `y1` | float | Top edge y-coordinate. |
+| `x2` | float | Right edge x-coordinate. |
+| `y2` | float | Bottom edge y-coordinate. |
+
+#### Error Conditions
+
+| Condition | `success` | `error` |
+|---|---|---|
+| Empty `image_data` | `false` | `"image_data is required"` |
+| Image cannot be decoded | `false` | `"failed to decode image (expected JPEG or PNG)"` |
+| Triton detection failure | `false` | `"face detection inference failed"` |
+
+---
+
 ## Webhook Result Delivery
 
 Each processed frame triggers an asynchronous HTTP POST to the session's `callback_url`.
@@ -307,7 +404,7 @@ These defaults apply when `SessionConfig` fields are `0` or omitted.
 
 ## Error Handling
 
-All four RPCs return `grpc::Status::OK` at the transport level. Application-level errors are encoded in the response messages:
+All RPCs return `grpc::Status::OK` at the transport level. Application-level errors are encoded in the response messages:
 
 | Endpoint | Error Indicator | Description |
 |---|---|---|
@@ -315,6 +412,8 @@ All four RPCs return `grpc::Status::OK` at the transport level. Application-leve
 | `StopSession` | `success == false` | Session ID not found. |
 | `GetSessionStatus` | `state == "unknown"` | Session ID not found. |
 | `ListSessions` | N/A | Always succeeds. Returns empty list if no sessions exist. |
+| `RegisterFace` | `success == false`, `error` field populated | Bad image, no/multiple faces, inference failure, DB write failure. |
+| `DetectFaces` | `success == false`, `error` field populated | Bad image, inference failure. Returns empty `detections` if zero faces found (still `success == true`). |
 
 Network-level gRPC errors (UNAVAILABLE, DEADLINE_EXCEEDED, etc.) follow standard gRPC semantics and indicate transport failures, not application logic issues.
 
@@ -393,6 +492,49 @@ grpcurl -plaintext -d '{
 }
 ```
 
+**Register a face:**
+
+```bash
+# Read the image file as binary and base64-encode it for grpcurl's JSON input
+IMAGE_B64=$(base64 < /path/to/photo.jpg)
+
+grpcurl -plaintext -d "{
+  \"name\": \"Jane Smith\",
+  \"image_data\": \"$IMAGE_B64\"
+}" localhost:50051 videoanalytics.v1.VideoAnalytics/RegisterFace
+```
+
+```json
+{
+  "success": true,
+  "personId": "23"
+}
+```
+
+**Detect faces (preview before registration):**
+
+```bash
+IMAGE_B64=$(base64 < /path/to/photo.jpg)
+
+grpcurl -plaintext -d "{
+  \"image_data\": \"$IMAGE_B64\"
+}" localhost:50051 videoanalytics.v1.VideoAnalytics/DetectFaces
+```
+
+```json
+{
+  "success": true,
+  "detections": [
+    {
+      "bbox": { "x1": 120.5, "y1": 80.2, "x2": 200.1, "y2": 220.8 },
+      "confidence": 0.93
+    }
+  ],
+  "imageWidth": 640,
+  "imageHeight": 480
+}
+```
+
 ### Python
 
 Using the `grpcio` and `grpcio-tools` packages with generated stubs.
@@ -439,6 +581,32 @@ result = stub.StopSession(
     analytics_pb2.StopSessionRequest(session_id=response.session_id)
 )
 print(f"Stopped: {result.success}, Frames: {result.frames_processed}")
+
+# Detect faces (preview before registration)
+with open("/path/to/photo.jpg", "rb") as f:
+    image_bytes = f.read()
+
+detect = stub.DetectFaces(analytics_pb2.DetectFacesRequest(
+    image_data=image_bytes,
+))
+if detect.success:
+    print(f"Image: {detect.image_width}x{detect.image_height}")
+    for i, det in enumerate(detect.detections):
+        b = det.bbox
+        print(f"  Face {i}: ({b.x1:.0f},{b.y1:.0f})-({b.x2:.0f},{b.y2:.0f}) "
+              f"conf={det.confidence:.2f}")
+else:
+    print(f"Detection failed: {detect.error}")
+
+# Register a face (after verifying detection looks correct)
+reg = stub.RegisterFace(analytics_pb2.RegisterFaceRequest(
+    name="Jane Smith",
+    image_data=image_bytes,
+))
+if reg.success:
+    print(f"Registered person_id={reg.person_id}")
+else:
+    print(f"Registration failed: {reg.error}")
 ```
 
 ### Receiving Webhooks
