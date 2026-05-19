@@ -22,6 +22,8 @@ public:
                          InferResult* outStats = nullptr);
 
     static constexpr int EMBEDDING_DIM = 512;
+    static constexpr const char* ARCFACE_INPUT_NAME = "input";
+    static constexpr const char* ARCFACE_OUTPUT_NAME = "output";
 
 private:
     TritonClient& client_;

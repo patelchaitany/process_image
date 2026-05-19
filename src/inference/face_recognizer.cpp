@@ -37,7 +37,8 @@ bool FaceRecognizer::recognize(const std::string& input_shm_name,
     std::vector<int64_t> outputShape = {num_faces, EMBEDDING_DIM};
 
     InferResult result = client_.infer(model_name_, input_shm_name,
-                                        inputShape, output_shm_name, outputShape);
+                                        inputShape, output_shm_name, outputShape,
+                                        ARCFACE_INPUT_NAME, ARCFACE_OUTPUT_NAME);
     if (outStats) *outStats = result;
     if (!result.isSuccess) return false;
 
@@ -55,7 +56,8 @@ bool FaceRecognizer::recognizeDirect(const float* inputData,
     std::vector<int64_t> outputShape = {num_faces, EMBEDDING_DIM};
 
     InferResult result = client_.inferDirect(model_name_, inputData,
-                                              inputShape, outputShape);
+                                              inputShape, outputShape,
+                                              ARCFACE_INPUT_NAME, ARCFACE_OUTPUT_NAME);
     if (outStats) *outStats = result;
     if (!result.isSuccess) return false;
 

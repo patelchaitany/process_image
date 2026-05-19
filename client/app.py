@@ -232,7 +232,7 @@ with tab_register:
                     annotated,
                     caption=f"{n_faces} face{'s' if n_faces != 1 else ''} detected "
                     f"({detect_resp.image_width}x{detect_resp.image_height})",
-                    use_container_width=True,
+                    use_column_width=True,
                 )
 
                 if n_faces == 0:
@@ -333,7 +333,7 @@ with tab_video:
                         break
                     writer.write(frame)
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    preview.image(rgb, channels="RGB", use_container_width=True)
+                    preview.image(rgb, channels="RGB", use_column_width=True)
                     elapsed = time.time() - start_t
                     progress.progress(
                         min(elapsed / rec_duration, 1.0),

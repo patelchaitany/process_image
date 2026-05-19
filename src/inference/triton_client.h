@@ -66,21 +66,22 @@ public:
                       const std::string& inputShmName,
                       const std::vector<int64_t>& inputShape,
                       const std::string& outputShmName,
-                      const std::vector<int64_t>& outputShape);
+                      const std::vector<int64_t>& outputShape,
+                      const std::string& inputTensorName = "images",
+                      const std::string& outputTensorName = "output0");
 
     /// @brief Run inference with inline data (CPU path, no shared memory).
     /// Input data is sent via gRPC; output is copied to InferResult::ownedOutput.
     InferResult inferDirect(const std::string& modelName,
                             const float* inputData,
                             const std::vector<int64_t>& inputShape,
-                            const std::vector<int64_t>& outputShape);
+                            const std::vector<int64_t>& outputShape,
+                            const std::string& inputTensorName = "images",
+                            const std::string& outputTensorName = "output0");
 
 private:
     std::string url_;
     bool isConnected_ = false;
     std::unique_ptr<tc::InferenceServerGrpcClient> client_;
     std::unordered_map<std::string, ShmRegion> registeredShm_;
-
-    static constexpr const char* INPUT_TENSOR_NAME = "images";
-    static constexpr const char* OUTPUT_TENSOR_NAME = "output0";
 };

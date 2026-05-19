@@ -91,7 +91,9 @@ InferResult TritonClient::infer(const std::string& modelName,
                                  const std::string& inputShmName,
                                  const std::vector<int64_t>& inputShape,
                                  const std::string& outputShmName,
-                                 const std::vector<int64_t>& outputShape) {
+                                 const std::vector<int64_t>& outputShape,
+                                 const std::string& inputTensorName,
+                                 const std::string& outputTensorName) {
     InferResult result;
     if (!isConnected_ || !client_) {
         result.errorMsg = "Not connected to Triton";
@@ -104,7 +106,7 @@ InferResult TritonClient::infer(const std::string& modelName,
         outputShape.begin(), outputShape.end(), int64_t{1}, std::multiplies<>());
 
     tc::InferInput* rawInput = nullptr;
-    tc::Error err = tc::InferInput::Create(&rawInput, INPUT_TENSOR_NAME, inputShape, "FP32");
+    tc::Error err = tc::InferInput::Create(&rawInput, inputTensorName.c_str(), inputShape, "FP32");
     if (!err.IsOk()) {
         result.errorMsg = "Failed to create InferInput: " + err.Message();
         return result;
@@ -117,7 +119,7 @@ InferResult TritonClient::infer(const std::string& modelName,
     }
 
     tc::InferRequestedOutput* rawOutput = nullptr;
-    err = tc::InferRequestedOutput::Create(&rawOutput, OUTPUT_TENSOR_NAME);
+    err = tc::InferRequestedOutput::Create(&rawOutput, outputTensorName.c_str());
     if (!err.IsOk()) {
         result.errorMsg = "Failed to create InferRequestedOutput: " + err.Message();
         return result;
@@ -167,7 +169,9 @@ InferResult TritonClient::infer(const std::string& modelName,
 InferResult TritonClient::inferDirect(const std::string& modelName,
                                        const float* inputData,
                                        const std::vector<int64_t>& inputShape,
-                                       const std::vector<int64_t>& outputShape) {
+                                       const std::vector<int64_t>& outputShape,
+                                       const std::string& inputTensorName,
+                                       const std::string& outputTensorName) {
     InferResult result;
     if (!isConnected_ || !client_) {
         result.errorMsg = "Not connected to Triton";
@@ -178,7 +182,7 @@ InferResult TritonClient::inferDirect(const std::string& modelName,
         inputShape.begin(), inputShape.end(), int64_t{1}, std::multiplies<>());
 
     tc::InferInput* rawInput = nullptr;
-    tc::Error err = tc::InferInput::Create(&rawInput, INPUT_TENSOR_NAME, inputShape, "FP32");
+    tc::Error err = tc::InferInput::Create(&rawInput, inputTensorName.c_str(), inputShape, "FP32");
     if (!err.IsOk()) {
         result.errorMsg = "Failed to create InferInput: " + err.Message();
         return result;
@@ -191,7 +195,7 @@ InferResult TritonClient::inferDirect(const std::string& modelName,
     }
 
     tc::InferRequestedOutput* rawOutput = nullptr;
-    err = tc::InferRequestedOutput::Create(&rawOutput, OUTPUT_TENSOR_NAME);
+    err = tc::InferRequestedOutput::Create(&rawOutput, outputTensorName.c_str());
     if (!err.IsOk()) {
         result.errorMsg = "Failed to create InferRequestedOutput: " + err.Message();
         return result;
@@ -214,7 +218,7 @@ InferResult TritonClient::inferDirect(const std::string& modelName,
 
     const uint8_t* outputBuf = nullptr;
     size_t outputBufSize = 0;
-    err = inferResult->RawData(OUTPUT_TENSOR_NAME, &outputBuf, &outputBufSize);
+    err = inferResult->RawData(outputTensorName.c_str(), &outputBuf, &outputBufSize);
     if (!err.IsOk() || !outputBuf) {
         result.errorMsg = "Failed to read output data: " + err.Message();
         return result;

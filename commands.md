@@ -149,3 +149,10 @@ docker stop triton && docker rm triton
 # Clean build
 rm -rf build/
 ```
+
+## Media server 
+
+docker run --rm \
+  --name mediamtx \
+  --network host \
+  bluenviron/mediamtx:1
