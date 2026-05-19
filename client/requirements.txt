@@ -1,0 +1,6 @@
+streamlit>=1.30.0
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
