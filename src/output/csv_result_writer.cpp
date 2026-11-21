@@ -9,8 +9,10 @@
 
 CsvResultWriter::CsvResultWriter(const std::string& path,
                                    int rotateSizeMb,
-                                   int flushIntervalMs)
+                                   int flushIntervalMs,
+                                   const std::string& sourceStem)
     : basePath_(path),
+      sourceStem_(sourceStem),
       rotateSizeBytes_(rotateSizeMb * 1024 * 1024),
       flushIntervalMs_(flushIntervalMs) {}
 
@@ -19,9 +21,25 @@ CsvResultWriter::~CsvResultWriter() {
 }
 
 bool CsvResultWriter::open() {
-    auto dir = std::filesystem::path(basePath_).parent_path();
+    namespace fs = std::filesystem;
+    if (!sourceStem_.empty()) {
+        fs::path configured(basePath_);
+        fs::path dir = configured.parent_path();
+        if (dir.empty()) dir = ".";
+
+        auto now = std::chrono::system_clock::now();
+        auto time = std::chrono::system_clock::to_time_t(now);
+        std::tm tm{};
+        localtime_r(&time, &tm);
+        std::ostringstream name;
+        name << "detections_" << sourceStem_ << "_"
+             << std::put_time(&tm, "%Y-%m-%d_%H%M%S") << ".csv";
+        basePath_ = (dir / name.str()).string();
+    }
+
+    auto dir = fs::path(basePath_).parent_path();
     if (!dir.empty()) {
-        std::filesystem::create_directories(dir);
+        fs::create_directories(dir);
     }
 
     file_.open(basePath_, std::ios::out | std::ios::app);
@@ -29,6 +47,7 @@ bool CsvResultWriter::open() {
         fprintf(stderr, "CsvResultWriter: cannot open %s\n", basePath_.c_str());
         return false;
     }
+    fprintf(stderr, "CsvResultWriter: writing %s\n", basePath_.c_str());
 
     if (std::filesystem::file_size(basePath_) == 0) {
         writeHeader();

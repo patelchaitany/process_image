@@ -3,10 +3,29 @@
 #include "output/csv_result_writer.h"
 #include <cstdio>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <iomanip>
 #include <sstream>
 #include <cuda_runtime.h>
+
+namespace {
+
+std::string source_file_stem(const std::string& source) {
+    std::string name = source;
+    auto slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    auto dot = name.find_last_of('.');
+    if (dot != std::string::npos && dot > 0) name = name.substr(0, dot);
+    if (name.empty()) name = "source";
+    for (char& c : name) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (!(std::isalnum(uc) || c == '-' || c == '_')) c = '_';
+    }
+    return name;
+}
+
+}  // namespace
 
 Pipeline::~Pipeline() {
     shutdown();
@@ -156,9 +175,12 @@ bool Pipeline::init(const PipelineConfig& config) {
     result_handler_->addWriter(
         std::make_unique<ConsoleResultWriter>(config_.console_verbose));
 
+    const std::string input_stem = source_file_stem(config_.input_source);
+
     if (!config_.bbox_csv.empty()) {
         result_handler_->addWriter(
-            std::make_unique<CsvResultWriter>(config_.bbox_csv, config_.bbox_csv_rotate_mb));
+            std::make_unique<CsvResultWriter>(config_.bbox_csv, config_.bbox_csv_rotate_mb,
+                                              500, input_stem));
     }
 
     if (!result_handler_->openAll()) {
@@ -175,7 +197,7 @@ bool Pipeline::init(const PipelineConfig& config) {
     } else {
         metrics_dir = "./metrics";
     }
-    metrics_logger_->init(metrics_dir);
+    metrics_logger_->init(metrics_dir, input_stem);
 
     initialized_ = true;
     printf("Pipeline initialized successfully (%s mode)\n", use_gpu_ ? "GPU" : "CPU");

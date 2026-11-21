@@ -192,7 +192,12 @@ void NvdecSource::launch_nv12_to_bgr(const uint8_t* y_plane, const uint8_t* uv_p
 bool NvdecSource::decode_next_frame() {
     while (true) {
         int ret = av_read_frame(fmt_ctx_, pkt_);
-        if (ret < 0) return false;
+        if (ret < 0) {
+            // EOF leaves the demuxer open. Callers treat is_open() as
+            // "retry"; without this they spin and log an empty row forever.
+            if (ret == AVERROR_EOF) opened_ = false;
+            return false;
+        }
 
         if (pkt_->stream_index != video_stream_idx_) {
             av_packet_unref(pkt_);

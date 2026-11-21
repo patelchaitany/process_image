@@ -24,9 +24,13 @@ public:
     /// @param path            Output CSV file path.
     /// @param rotateSizeMb    Rotate the file once it exceeds this size (0 = never).
     /// @param flushIntervalMs How often the writer thread flushes to disk.
+    /// @param sourceStem  Input file stem. When set, the file is
+    ///                    <dir>/detections_<stem>_<timestamp>.csv
+    ///                    instead of the fixed path.
     explicit CsvResultWriter(const std::string& path,
                              int rotateSizeMb = 100,
-                             int flushIntervalMs = 500);
+                             int flushIntervalMs = 500,
+                             const std::string& sourceStem = "");
     ~CsvResultWriter() override;
 
     bool open() override;
@@ -35,6 +39,7 @@ public:
 
 private:
     std::string basePath_;
+    std::string sourceStem_;
     int rotateSizeBytes_;
     int flushIntervalMs_;
 

@@ -41,6 +41,23 @@ import numpy as np
 # Config.pbtxt templates
 # ---------------------------------------------------------------------------
 
+def trt_fp16_optimization_block(model_name: str) -> str:
+    """TensorRT FP16 via ONNX Runtime backend (GPU only). Paths match Docker mount /models."""
+    cache = f"/models/{model_name}/trt_cache"
+    return f"""optimization {{
+  execution_accelerators {{
+    gpu_execution_accelerator: [{{
+      name: "tensorrt"
+      parameters {{ key: "precision_mode" value: "FP16" }}
+      parameters {{ key: "max_workspace_size_bytes" value: "1073741824" }}
+      parameters {{ key: "trt_engine_cache_enable" value: "1" }}
+      parameters {{ key: "trt_engine_cache_path" value: "{cache}" }}
+    }}]
+  }}
+}}
+"""
+
+
 YOLO_CONFIG = """\
 name: "yolo26_face"
 platform: "onnxruntime_onnx"
@@ -66,6 +83,7 @@ dynamic_batching {{
   max_queue_delay_microseconds: 100
 }}
 
+{trt_optimization}
 instance_group [{{ kind: {device_kind} }}]
 """
 
@@ -90,12 +108,18 @@ output [
 ]
 
 dynamic_batching {{
-  preferred_batch_size: [ 1, 4, 8 ]
+  preferred_batch_size: [ 1, 4, 8, 16, 32 ]
   max_queue_delay_microseconds: 100
 }}
 
+{trt_optimization}
 instance_group [{{ kind: {device_kind} }}]
 """
+
+
+def ensure_trt_cache_dirs(repo_root: str) -> None:
+    for sub in ("yolo26_face", "arcface"):
+        os.makedirs(os.path.join(repo_root, sub, "trt_cache"), exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -659,10 +683,15 @@ def main():
     yolo_cfg_path = os.path.join(args.output, "yolo26_face", "config.pbtxt")
     arcface_cfg_path = os.path.join(args.output, "arcface", "config.pbtxt")
 
+    trt_yolo = trt_fp16_optimization_block("yolo26_face") if device_kind == "KIND_GPU" else ""
+    trt_arc = trt_fp16_optimization_block("arcface") if device_kind == "KIND_GPU" else ""
+    if device_kind == "KIND_GPU":
+        ensure_trt_cache_dirs(args.output)
+
     with open(yolo_cfg_path, "w") as f:
-        f.write(YOLO_CONFIG.format(device_kind=device_kind))
+        f.write(YOLO_CONFIG.format(device_kind=device_kind, trt_optimization=trt_yolo))
     with open(arcface_cfg_path, "w") as f:
-        f.write(ARCFACE_CONFIG.format(device_kind=device_kind))
+        f.write(ARCFACE_CONFIG.format(device_kind=device_kind, trt_optimization=trt_arc))
 
     print("[2/4] Config files written")
     print()

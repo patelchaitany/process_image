@@ -9,9 +9,10 @@ MetricsLogger::~MetricsLogger() {
     shutdown();
 }
 
-bool MetricsLogger::init(const std::string& output_dir, int flush_interval_ms,
-                          int rotate_size_mb) {
+bool MetricsLogger::init(const std::string& output_dir, const std::string& source_stem,
+                          int flush_interval_ms, int rotate_size_mb) {
     output_dir_ = output_dir;
+    source_stem_ = source_stem;
     flush_interval_ms_ = flush_interval_ms;
     rotate_size_bytes_ = static_cast<size_t>(rotate_size_mb) * 1024 * 1024;
 
@@ -23,6 +24,7 @@ bool MetricsLogger::init(const std::string& output_dir, int flush_interval_ms,
         fprintf(stderr, "MetricsLogger: cannot open %s\n", filename.c_str());
         return false;
     }
+    fprintf(stderr, "MetricsLogger: writing %s\n", filename.c_str());
 
     running_ = true;
     writer_thread_ = std::thread(&MetricsLogger::writer_thread_func, this);
@@ -139,7 +141,8 @@ std::string MetricsLogger::generate_filename() const {
     localtime_r(&time, &tm);
 
     std::ostringstream ss;
-    ss << output_dir_ << "/metrics_"
-       << std::put_time(&tm, "%Y-%m-%d_%H%M%S") << ".csv";
+    ss << output_dir_ << "/metrics_";
+    if (!source_stem_.empty()) ss << source_stem_ << "_";
+    ss << std::put_time(&tm, "%Y-%m-%d_%H%M%S") << ".csv";
     return ss.str();
 }
