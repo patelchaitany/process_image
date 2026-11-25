@@ -1,27 +1,20 @@
 # Tools
 
-Scripts around the pipeline, grouped by what they are for. Lines marked (WSL) run on the GPU machine inside WSL,
-(Windows) in the Windows Python environment there, (Mac) on the machine you work from. Paths inside the scripts are
-the benchmark machine's (`E:\bench`, `/root/fastpipe`).
+Scripts for measuring, checking and testing the pipeline. None of them is needed to run it: the pipeline and its
+setup scripts are in `../../fastpipe/`.
+
+Lines marked (WSL) run on the GPU machine inside WSL, (Windows) in the Windows Python environment there, (Mac) on the
+machine you work from. Paths inside the scripts are the benchmark machine's (`E:\bench`, `/root/fastpipe`). The WSL
+scripts can be run where they are: `bash /mnt/e/bench/fastpipe-dev/tools/check/dump720.sh`.
 
 `REC=<name>` picks the recogniser engine for any script that runs `fastpipe`: `edgeface_s` (default),
 `edgeface_base`, `r50`, `mbf`.
-
-## setup/: get from nothing to a running pipeline
-
-| Script | Purpose |
-|---|---|
-| `wsl_trt_install.sh` | (WSL) Install the TensorRT 10.16 SDK and `trtexec` |
-| `wsl_build.sh` | (WSL) Copy the sources from `E:\bench\fastpipe` and build `fastpipe` |
-| `prep_onnx.py` | (Windows) Prepare the ONNX files the engines are built from |
-| `fix_opset.py` | (Windows) Make the 8-bit ArcFace R50 ONNX file acceptable to TensorRT |
-| `build_engines.sh` | (WSL) Build the TensorRT FP16 engines and write each recogniser's `.thr` threshold file |
 
 ## bench/: speed and capacity
 
 | Script | Purpose |
 |---|---|
-| `stress.sh` | (WSL) Stress run at given camera counts: `stress.sh <tag> <recogniser> <counts> [flags]` |
+| `stress.sh` | (WSL) Stress run at given camera counts: `stress.sh <tag> <recogniser> <counts> [flags]`. `slarun.sh` expects a copy in `E:\bench\wsl` |
 | `slarun.sh` | (Mac) One stress run over ssh, printing the end-to-end delay figures |
 | `kb.sh` | (WSL) GPU time and memory bandwidth of each custom kernel |
 | `prof.sh` | (WSL) Nsight Systems timeline at a camera count |
@@ -34,7 +27,6 @@ the benchmark machine's (`E:\bench`, `/root/fastpipe`).
 |---|---|
 | `dump720.sh` | (WSL) Dump boxes and embeddings for 60 frames of the 720p clip |
 | `compare_dump.py` | (Windows) Compare a dump with ONNX Runtime: detector input, detections, embeddings |
-| `cmp_int8.py` | Compare the embeddings of two dumps (8-bit against 16-bit float engine) |
 | `boxeval.sh` | (WSL) Boxes skipped or added when detecting on every 2nd or 3rd frame |
 | `kfeval.sh`, `kfeval_dense.sh` | (WSL) Kalman-filled boxes against detected boxes, normal and dense clip |
 | `kfsweep.sh` | (WSL) The same over a grid of Kalman noise settings |
@@ -49,6 +41,20 @@ the benchmark machine's (`E:\bench`, `/root/fastpipe`).
 | `mkclips30.sh` | (WSL) 1080p clips at 30 fps |
 | `mkclips720.sh` | (WSL) 720p clips at 30 fps, H.264 and H.265 |
 | `mkdense.sh`, `mkdense45.sh` | (WSL) Dense 720p clips (about 51 faces per frame) built from bands of the crowd clip |
+
+## int8/: the 8-bit experiment
+
+| Script | Purpose |
+|---|---|
+| `fix_opset.py` | (Windows) Make the 8-bit ArcFace R50 ONNX file acceptable to TensorRT |
+| `cmp_int8.py` | Compare the embeddings of two dumps (8-bit against 16-bit float engine) |
+
+## live/: test the camera page without a camera
+
+| Script | Purpose |
+|---|---|
+| `test_client.mjs` | (Mac) Send an H.264 file through the bridge as N cameras and check frames, zones and naming |
+| `livefeed.py` | (WSL) Feed an H.264 file straight into `fastpipe --live` and print what comes back |
 
 ## exp/: one experiment at a time on the remote GPU machine
 

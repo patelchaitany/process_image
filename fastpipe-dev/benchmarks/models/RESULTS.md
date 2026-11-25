@@ -70,7 +70,7 @@ ArcFace R50 was not run above 40 cameras. Nothing was run above 64: the first Ed
 ### Match threshold
 
 A cosine score does not mean the same thing for two recognisers, so each engine now carries its own thresholds in
-`<engine>.thr`, written by `tools/setup/build_engines.sh` and read by `fastpipe` at start (`--match-thr` and
+`<engine>.thr`, written by `fastpipe/setup/build_engines.sh` and read by `fastpipe` at start (`--match-thr` and
 `--unknown-thr` override them).
 
 | Recogniser | Match at or above | Unknown below |
@@ -103,7 +103,7 @@ how many true matches survive at a threshold strict enough to keep false matches
 
 At these thresholds 1 of the 15,500 different-person pairs matches with ArcFace R50 and none with the other two.
 
-**In the pipeline.** `tools/check/track_scores.py` labels the test clips by tracking: one track at two moments is the same
+**In the pipeline.** `tools/check/track_scores.py` (in `fastpipe-dev`) labels the test clips by tracking: one track at two moments is the same
 person, two faces in one frame are different people. Embeddings are the pipeline's own (face cut out by its box, no
 landmark alignment). 450 frames of each clip:
 
@@ -127,12 +127,12 @@ landmark alignment). 450 frames of each clip:
 ### Embedding check
 
 Pipeline embeddings (NV12 crop on the GPU, FP16 engine) against the reference (OpenCV crop, ONNX Runtime FP32) for
-the same 999 boxes, `tools/check/compare_dump.py`: mean cosine 0.987 for ArcFace R50, 0.987 for EdgeFace-S and 0.977 for
+the same 999 boxes, `tools/check/compare_dump.py` (in `fastpipe-dev`): mean cosine 0.987 for ArcFace R50, 0.987 for EdgeFace-S and 0.977 for
 EdgeFace-Base.
 
 ### Switching recogniser
 
-- Tools: `REC=r50` (or `edgeface_base`, `mbf`) before any script in `tools/`; `stress.sh` takes it as an argument.
+- Scripts in `fastpipe-dev/tools`: `REC=r50` (or `edgeface_base`, `mbf`) before the script; `stress.sh` takes it as an argument.
 - Camera test page: `FP_REC=rec_r50_fp16.plan` in the bridge's environment.
 - Directly: `fastpipe --rec engines/rec_r50_fp16.plan`. The thresholds follow the engine.
 
@@ -297,4 +297,4 @@ use (SCRFD and EdgeFace code are permissively licensed), or YuNet with SFace as 
 | `eval/make_tables.py` | Prints the tables above from `results/` |
 | `eval/onnx_info.py` | Prints a model file's inputs and outputs |
 | `eval/run/` | The batch files that ran everything on the test machine: model download, each evaluation, TensorRT timing |
-| `tools/check/track_scores.py` (in `fastpipe/tools`) | Produces `track_scores.jsonl` from a pipeline dump |
+| `../../tools/check/track_scores.py` | Produces `track_scores.jsonl` from a pipeline dump |

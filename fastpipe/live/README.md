@@ -67,15 +67,15 @@ camera -> 1280x720 -> H.264 encoder --WebSocket over ssh--> bridge.py --pipe--> 
 | `index.html` | browser | The page |
 | `bridge.py` | laptop (WSL) | WebSocket to pipes; Python standard library only |
 | `wsl_run.sh` | laptop (WSL) | Stops an old session, starts the bridge |
-| `test_client.mjs` | Mac | Check without a browser: `node test_client.mjs clip.h264 12 2` |
-| `livefeed.py` | laptop (WSL) | Feed a file straight into `fastpipe --live` and print what comes back |
 | `local.env` | Mac | Your `LAPTOP` and `LAPTOP_USER` (not in git) |
 | `laptop_known_hosts` | Mac | Optional, not in git: the GPU machine's ssh host key, so the Mac's own known-hosts file is not touched |
 
 ## Debugging
 
 `FP_LIVE_DEBUG=1` in fastpipe's environment prints, every 10th batch, what the detector found and how many boxes were
-delivered. `livefeed.py` (run inside WSL) feeds an H.264 file straight into `fastpipe --live`, with no bridge or browser.
+delivered. Two test helpers are in `../../fastpipe-dev/tools/live/`: `test_client.mjs` checks the whole path without a
+browser (`node test_client.mjs clip.h264 12 2`), and `livefeed.py` (run inside WSL) feeds an H.264 file straight into
+`fastpipe --live`, with no bridge or browser.
 
 ## Limits
 

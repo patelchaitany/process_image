@@ -311,7 +311,7 @@ recognition is L2-normalised into the gallery on the GPU and the track is named 
 ## 13. Recogniser and match thresholds
 
 The recogniser is an engine file, nothing else: every supported model takes a 112×112 RGB face scaled to −1..1 (K3)
-and returns 512 numbers (K4 normalises them). `tools/setup/build_engines.sh` builds four:
+and returns 512 numbers (K4 normalises them). `setup/build_engines.sh` builds four:
 
 | Engine | Model | Size | GPU time per face | 40 dense cameras |
 |---|---|---|---|---|
@@ -328,21 +328,21 @@ the false-match rate ArcFace R50 has at 0.45 / 0.25.
 
 **The trade.** EdgeFace-S is the default because it frees about 60% of the GPU at 40 dense cameras and still passes
 at 64. At the same false-match rate it re-matches the same face less often than ArcFace R50 (28% against 42% one
-second apart on the test clips' small faces). Use `REC=r50` (tools) or `--rec engines/rec_r50_fp16.plan` when matching
+second apart on the test clips' small faces). Use `--rec engines/rec_r50_fp16.plan` when matching
 quality matters more than camera count. Measurements, the model comparison and licences:
-[benchmarks/models/RESULTS.md](benchmarks/models/RESULTS.md).
+[../fastpipe-dev/benchmarks/models/RESULTS.md](../fastpipe-dev/benchmarks/models/RESULTS.md).
 
 ## 9. Build, run and results
 
 ```bash
-# WSL2 / Linux with CUDA 12.x, TensorRT 10.x, FFmpeg 6 dev packages (tools/setup/wsl_trt_install.sh)
+# WSL2 / Linux with CUDA 12.x, TensorRT 10.x, FFmpeg 6 dev packages (setup/wsl_trt_install.sh)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-tools/setup/build_engines.sh                # FP16 engines + per-layer profiles (ONNX from tools/setup/prep_onnx.py)
+setup/build_engines.sh                      # FP16 engines + per-layer profiles (ONNX from setup/prep_onnx.py)
 build/fastpipe --det engines/det_r384_fp16.plan --rec engines/rec_edgeface_s_fp16.plan --counts 16,32,64,128
 build/fastpipe ... --policy fifo --buffer-s 3 --budget 0 --counts 40,48,56   # real-time rule: every frame, 3 s buffer
-build/fastpipe ... --dump 60      # validation dump (tools/check/compare_dump.py)
+build/fastpipe ... --dump 60      # validation dump (../fastpipe-dev/tools/check/compare_dump.py)
 build/fastpipe ... --kbench 1     # per-kernel GPU time and achieved bandwidth
-tools/bench/prof.sh 64 n64              # Nsight Systems timeline with NVTX stage ranges
+../fastpipe-dev/tools/bench/prof.sh 64 n64   # Nsight Systems timeline with NVTX stage ranges
 ```
 
-Model comparison, the recogniser choice and its measurements: [benchmarks/models/RESULTS.md](benchmarks/models/RESULTS.md).
+Model comparison, the recogniser choice and its measurements: [../fastpipe-dev/benchmarks/models/RESULTS.md](../fastpipe-dev/benchmarks/models/RESULTS.md).

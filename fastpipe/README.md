@@ -23,45 +23,45 @@ when every box, ID and name for its 30 frames is delivered; the rule is 95% of c
 
 EdgeFace-S buys the headroom and costs matching quality: at the same false-match rate it re-matches the same face less
 often than ArcFace R50. The numbers, the comparison of 17 detectors and 14 recognisers on labelled test sets, and the
-licences are in [benchmarks/models/RESULTS.md](benchmarks/models/RESULTS.md).
+licences are in [../fastpipe-dev/benchmarks/models/RESULTS.md](../fastpipe-dev/benchmarks/models/RESULTS.md).
 
 ## Layout
+
+This folder holds the pipeline and what it needs to run, nothing else.
 
 | Path | Content |
 |---|---|
 | `src/` | The pipeline: decoder, CUDA kernels, GPU tracker, TensorRT wrapper, scheduler |
-| `tools/setup/` | Install TensorRT, build the pipeline, prepare ONNX files, build engines |
-| `tools/bench/` | Stress runs and profiling |
-| `tools/check/` | Checks against a reference: embeddings, boxes, tracker, match scores |
-| `tools/clips/` | Make the test clips with FFmpeg |
-| `tools/exp/` | Run one experiment on the remote GPU machine under a lock |
-| `live/` | Browser test page for real cameras: draw zones, name faces ([live/README.md](live/README.md)) |
-| `benchmarks/models/` | Model comparison: `RESULTS.md`, `CANDIDATES.md`, `results/` (raw data), `eval/` (evaluators) |
+| `CMakeLists.txt` | Build file |
+| `setup/` | Install TensorRT, build the pipeline, prepare ONNX files, build engines and thresholds |
+| `live/` | Camera page: browser page and bridge for real cameras, zones and naming ([live/README.md](live/README.md)) |
+| `ARCHITECTURE.md` | Design and kernel details |
 
-Every script is listed with its purpose in [tools/README.md](tools/README.md).
+Benchmarks, evaluators, test clips and every measuring or checking script are in
+[`../fastpipe-dev/`](../fastpipe-dev/README.md).
 
 ## Build and run
 
-Linux or WSL2 with CUDA 12.x, TensorRT 10.x and the FFmpeg 6 development packages (`tools/setup/wsl_trt_install.sh`).
+Linux or WSL2 with CUDA 12.x, TensorRT 10.x and the FFmpeg 6 development packages (`setup/wsl_trt_install.sh`).
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-tools/setup/build_engines.sh  # TensorRT FP16 engines and each recogniser's match thresholds
+setup/build_engines.sh        # TensorRT FP16 engines and each recogniser's match thresholds
 build/fastpipe --det engines/det_r384_fp16.plan --rec engines/rec_edgeface_s_fp16.plan --counts 16,32,40
 ```
 
-The scripts in `tools/` carry the paths of the machine they were written on (`E:\bench` on Windows, `/root/fastpipe`
+The scripts in `setup/` carry the paths of the machine they were written on (`E:\bench` on Windows, `/root/fastpipe`
 in WSL); change them for yours.
 
 ## Models
 
-Model files are not in this repository. `benchmarks/models/CANDIDATES.md` lists where each comes from, and
-`tools/setup/prep_onnx.py` prepares the ONNX files the engines are built from.
+Model files are not in this repository. `../fastpipe-dev/benchmarks/models/CANDIDATES.md` lists where each comes
+from, and `setup/prep_onnx.py` prepares the ONNX files the engines are built from.
 
 | Role | Default | Other engines |
 |---|---|---|
 | Detector | YOLOv8n-face (lindevs), 640×384 | |
-| Recogniser | EdgeFace-S | ArcFace R50, EdgeFace-Base, MobileFaceNet (`--rec`, or `REC=r50` for the tools) |
+| Recogniser | EdgeFace-S | ArcFace R50, EdgeFace-Base, MobileFaceNet (`--rec engines/rec_r50_fp16.plan`) |
 
 Each recogniser engine has a `.thr` file with its own match thresholds, because cosine scores are not comparable
 between models.

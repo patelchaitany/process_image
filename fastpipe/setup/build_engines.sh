@@ -23,7 +23,7 @@ import onnx; print(onnx.load("/mnt/e/bench/models/cpp/rec_r50.onnx").graph.input
 P
 )
 # Each recogniser's match thresholds, read by fastpipe from <engine>.thr. Cosine scores differ between models: these
-# give every model the false-match rate ArcFace R50 has at 0.45 / 0.25 (benchmarks/models/RESULTS.md, "Match threshold").
+# give every model the false-match rate ArcFace R50 has at 0.45 / 0.25 (fastpipe-dev/benchmarks/models/RESULTS.md, "Match threshold").
 thr() { [ -f "$E/$1.plan" ] && printf 'match_thr %s\nunknown_thr %s\n' "$2" "$3" > "$E/$1.thr"; return 0; }
 build det_r384_fp16 $M/det_r384.onnx      images 3x384x640 1 16 32  --fp16
 build rec_edgeface_s_fp16    $M/rec_edgeface_s.onnx    input 3x112x112 1 64 128 --fp16     # default recogniser
