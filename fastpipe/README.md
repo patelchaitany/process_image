@@ -34,10 +34,9 @@ This folder holds the pipeline and what it needs to run, nothing else.
 | `src/` | The pipeline: decoder, CUDA kernels, GPU tracker, TensorRT wrapper, scheduler |
 | `CMakeLists.txt` | Build file |
 | `setup/` | Install TensorRT, build the pipeline, prepare ONNX files, build engines and thresholds |
-| `live/` | Camera page: browser page and bridge for real cameras, zones and naming ([live/README.md](live/README.md)) |
 | `ARCHITECTURE.md` | Design and kernel details |
 
-Benchmarks, evaluators, test clips and every measuring or checking script are in
+The camera page, benchmarks, evaluators, test clips and every measuring or checking script are in
 [`../fastpipe-dev/`](../fastpipe-dev/README.md).
 
 ## Build and run

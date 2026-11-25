@@ -18,10 +18,10 @@ OPTS=(-i "${LAPTOP_KEY:-$HOME/.ssh/id_ed25519}" -o BatchMode=yes -o ConnectTimeo
 # key never has to go into ~/.ssh/known_hosts.
 [ -f "$DIR/laptop_known_hosts" ] && OPTS+=(-o "UserKnownHostsFile=$DIR/laptop_known_hosts" -o StrictHostKeyChecking=yes)
 set -e
-ssh "${OPTS[@]}" "$LUSER@$LAPTOP" "if not exist E:\\bench\\fastpipe\\live mkdir E:\\bench\\fastpipe\\live"
-scp -q "${OPTS[@]}" "$DIR/bridge.py" "$DIR/index.html" "$DIR/wsl_run.sh" "$LUSER@$LAPTOP:E:/bench/fastpipe/live/"
+ssh "${OPTS[@]}" "$LUSER@$LAPTOP" "if not exist E:\\bench\\fastpipe-dev\\live mkdir E:\\bench\\fastpipe-dev\\live"
+scp -q "${OPTS[@]}" "$DIR/bridge.py" "$DIR/index.html" "$DIR/wsl_run.sh" "$LUSER@$LAPTOP:E:/bench/fastpipe-dev/live/"
 echo "Page: http://localhost:$PORT   (Ctrl-C to stop)"
 # the page needs Chrome's video encoder; fall back to the default browser if Chrome is not installed
 if [ -z "$NO_OPEN" ]; then (sleep 2; open -a "Google Chrome" "http://localhost:$PORT" 2>/dev/null || open "http://localhost:$PORT") & fi
 exec ssh "${OPTS[@]}" -o ExitOnForwardFailure=yes -L "$PORT:127.0.0.1:$PORT" "$LUSER@$LAPTOP" \
-  "wsl -d Ubuntu-24.04 -u root -e env FP_PORT=$PORT ${FP_REC:+FP_REC=$FP_REC} bash /mnt/e/bench/fastpipe/live/wsl_run.sh"
+  "wsl -d Ubuntu-24.04 -u root -e env FP_PORT=$PORT ${FP_REC:+FP_REC=$FP_REC} bash /mnt/e/bench/fastpipe-dev/live/wsl_run.sh"

@@ -306,7 +306,8 @@ thread prints one JSON line per frame on stdout. This is the only per-box data t
 <label>` stores that track's face as gallery row `<label>` (`enroll_kernel`: the embedding of the track's next
 recognition is L2-normalised into the gallery on the GPU and the track is named at once), `Q` stops.
 
-**Test page.** `live/` holds a browser page, a bridge (WebSocket to pipes) and a launcher; see `live/README.md`.
+**Test page.** `../fastpipe-dev/live/` holds a browser page, a bridge (WebSocket to pipes) and a launcher; see its
+`README.md`.
 
 ## 13. Recogniser and match thresholds
 

@@ -3,6 +3,3 @@ engines/
 prof/
 __pycache__/
 *.pyc
-# your own machine: address, ssh user and host key of the GPU machine
-live/local.env
-live/laptop_known_hosts

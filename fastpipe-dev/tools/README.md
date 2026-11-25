@@ -49,13 +49,6 @@ scripts can be run where they are: `bash /mnt/e/bench/fastpipe-dev/tools/check/d
 | `fix_opset.py` | (Windows) Make the 8-bit ArcFace R50 ONNX file acceptable to TensorRT |
 | `cmp_int8.py` | Compare the embeddings of two dumps (8-bit against 16-bit float engine) |
 
-## live/: test the camera page without a camera
-
-| Script | Purpose |
-|---|---|
-| `test_client.mjs` | (Mac) Send an H.264 file through the bridge as N cameras and check frames, zones and naming |
-| `livefeed.py` | (WSL) Feed an H.264 file straight into `fastpipe --live` and print what comes back |
-
 ## exp/: one experiment at a time on the remote GPU machine
 
 Each takes a lock, so several people or agents can share one GPU. They need `FP_SSH_DIR`: a folder holding an
