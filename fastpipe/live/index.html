@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera zone test</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --text: #1c1c1a; --muted: #6b6b66; --line: #dddcd6; --accent: #2456d6;
+    --ok: #1d7a46; --warn: #a15c00; --bad: #b3261e; --chip: #efeee9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --text: #ecebe6; --muted: #a09f98; --line: #34342f; --accent: #86a8ff;
+            --ok: #6fd39b; --warn: #f0b45c; --bad: #ff8a80; --chip: #2a2a27; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0 8px 0 0; }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--muted); }
+  button, select, input[type=text] { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { button.primary { color: #10131c; } }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.link { border: 0; background: none; padding: 0 4px; color: var(--muted); }
+  .pill { padding: 3px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; }
+  .pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+  .grow { flex: 1; }
+  #note { color: var(--muted); font-size: 12px; }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 16px; padding: 16px 20px; }
+  .cam { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row + .row, .stage + .row { margin-top: 8px; }
+  .cam .title { font-weight: 600; }
+  .cam select { max-width: 100%; flex: 1; min-width: 160px; }
+  .stage { position: relative; margin-top: 10px; background: #000; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage.drawing canvas { cursor: crosshair; }
+  .stage .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b8b8b2; text-align: center; padding: 20px; }
+  .stats { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .enroll { margin-top: 8px; padding: 8px; border: 1px solid var(--accent); border-radius: 6px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+  @media (max-width: 560px) { .cols { grid-template-columns: 1fr; } main { grid-template-columns: 1fr; } }
+  ul.zones { list-style: none; margin: 0; padding: 0; }
+  ul.zones li { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  ul.zones input { flex: 1; min-width: 0; padding: 3px 6px; }
+  .chip { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .count { font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 2px 8px 2px 0; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .people { max-height: 220px; overflow: auto; }
+  .none { color: var(--muted); font-size: 12px; }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  #toast.show { opacity: .95; }
+  video.src { position: absolute; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Camera zone test</h1>
+  <span id="status" class="pill">Connecting…</span>
+  <button id="start" class="primary">Start pipeline</button>
+  <button id="perm">Allow cameras</button>
+  <label class="hint" for="zoom">Faces are</label>
+  <select id="zoom" title="The detector misses faces that fill the picture. Close-up shrinks the picture for the detector; names still use the full picture.">
+    <option value="auto">auto</option>
+    <option value="1">far away (CCTV)</option>
+    <option value="0.5">close-up (webcam)</option>
+    <option value="0.33">very close</option>
+  </select>
+  <span class="grow"></span>
+  <span id="note"></span>
+</header>
+<main id="cams"></main>
+<div id="toast" role="status"></div>
+
+<template id="tpl">
+  <section class="cam">
+    <div class="row">
+      <span class="title"></span>
+      <select class="source" aria-label="Video source"></select>
+      <input class="file" type="file" accept="video/*" hidden>
+    </div>
+    <div class="stage">
+      <canvas></canvas>
+      <div class="empty">Pick a camera above</div>
+    </div>
+    <div class="row">
+      <button class="draw">Draw zone</button>
+      <span class="hint"></span>
+      <span class="grow"></span>
+      <span class="stats"></span>
+    </div>
+    <div class="enroll row" hidden>
+      <span>Name for <b class="who"></b></span>
+      <input class="name" type="text" maxlength="40" placeholder="Name" aria-label="Name">
+      <button class="save primary">Save</button>
+      <button class="cancel">Cancel</button>
+    </div>
+    <div class="cols">
+      <div>
+        <h2>Zones</h2>
+        <ul class="zones"></ul>
+        <div class="none nozones">No zones yet. Use Draw zone, then click the corners on the video.</div>
+      </div>
+      <div>
+        <h2>People in view</h2>
+        <div class="people"></div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script>
+'use strict';
+const W = 1280, H = 720, FPS = 30, USPF = Math.round(1e6 / FPS), NCAM = 2;
+const COLORS = ['#3b82f6', '#22a565', '#f08c2e', '#a855f7', '#e5484d', '#0fb5ae', '#d4a700', '#e0457b'];
+const $ = (s, r = document) => r.querySelector(s);
+
+let ws = null, state = 'idle';        // idle | starting | running
+let nextLabel = 0;
+const names = new Map();               // gallery label -> name (lasts until the pipeline is stopped)
+const panels = [];
+let devices = [], clips = [];
+
+function toast(msg, ms = 3500) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => t.classList.remove('show'), ms);
+}
+function setStatus(text, cls = '') { const s = $('#status'); s.textContent = text; s.className = 'pill ' + cls; }
+
+class Panel {
+  constructor(i) {
+    this.i = i;
+    this.pipe = -1;                    // camera index inside the pipeline while running
+    this.zones = [];
+    try { this.zones = JSON.parse(localStorage.getItem('fpzones:' + i) || '[]'); } catch (e) { this.zones = []; }
+    this.frames = [];                  // sent frames waiting for their result: {seq, bmp, t}
+    this.results = new Map();          // seq -> boxes
+    this.maxRes = -1;
+    this.shown = null;                 // {bmp, boxes} currently on screen
+    this.preview = null;               // newest frame while the pipeline is not running
+    this.lat = [];
+    this.delay = 200;
+    this.seq = 0;
+    this.sending = false;
+    this.enc = null;
+    this.drawing = null;               // points of the zone being drawn
+    this.cursor = null;
+    this.stream = null;
+    this.reader = null;
+    this.sourceGen = 0;
+    this.sentN = 0; this.resN = 0; this.gpuMs = 0; this.fpsSent = 0; this.fpsRes = 0;
+    this.lastCap = 0;
+    this.lastList = 0;
+
+    const el = document.importNode($('#tpl').content, true).firstElementChild;
+    this.el = el;
+    $('.title', el).textContent = 'Camera ' + (i + 1);
+    this.sel = $('.source', el);
+    this.file = $('.file', el);
+    this.canvas = $('canvas', el);
+    this.ctx = this.canvas.getContext('2d');
+    this.stage = $('.stage', el);
+    this.work = new OffscreenCanvas(W, H);
+    this.wctx = this.work.getContext('2d', { alpha: false });
+    this.video = document.createElement('video');
+    this.video.className = 'src';
+    this.video.muted = true; this.video.playsInline = true; this.video.loop = true;
+    this.stage.appendChild(this.video);
+    $('#cams').appendChild(el);
+
+    this.sel.onchange = () => this.pickSource(this.sel.value);
+    this.file.onchange = () => { if (this.file.files[0]) this.openUrl(URL.createObjectURL(this.file.files[0])); };
+    $('.draw', el).onclick = () => this.toggleDraw();
+    this.canvas.addEventListener('click', (e) => this.onClick(e));
+    this.canvas.addEventListener('dblclick', (e) => { e.preventDefault(); this.finishZone(); });
+    this.canvas.addEventListener('mousemove', (e) => { this.cursor = this.norm(e); });
+    this.canvas.addEventListener('mouseleave', () => { this.cursor = null; });
+    $('.save', el).onclick = () => this.saveName();
+    $('.cancel', el).onclick = () => { $('.enroll', el).hidden = true; };
+    $('.name', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') this.saveName(); if (e.key === 'Escape') $('.enroll', el).hidden = true; });
+    new ResizeObserver(() => this.resize()).observe(this.stage);
+    this.resize();
+    this.renderZoneList();
+  }
+
+  // ---------- sources
+  fillSources() {
+    const cur = this.sel.value;
+    this.sel.innerHTML = '';
+    const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; this.sel.appendChild(o); };
+    add('', 'No source');
+    devices.forEach((d, k) => add('cam:' + d.deviceId, d.label || 'Camera ' + (k + 1)));
+    add('file', 'Video file from this Mac…');
+    clips.forEach((c) => add('clip:' + c, 'Test clip: ' + c));
+    if ([...this.sel.options].some((o) => o.value === cur)) this.sel.value = cur;
+  }
+  hasSource() { return !!this.stream || (!!this.video.src && !this.video.paused); }
+  async stopSource() {
+    this.sourceGen++;
+    if (this.reader) { try { await this.reader.cancel(); } catch (e) {} this.reader = null; }
+    if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); this.stream = null; }
+    this.video.pause();
+    this.video.srcObject = null;
+    this.video.removeAttribute('src');
+    this.video.load();
+    if (this.preview) { this.preview.close(); this.preview = null; }
+  }
+  async pickSource(v) {
+    if (state !== 'idle') { toast('Stop the pipeline before changing the source'); this.fillSources(); return; }
+    await this.stopSource();
+    $('.empty', this.el).hidden = !!v;
+    if (!v) return;
+    if (v === 'file') { this.file.value = ''; this.file.click(); return; }
+    if (v.startsWith('clip:')) return this.openUrl('/clip/' + v.slice(5));
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: v.slice(4) }, width: { ideal: W }, height: { ideal: H }, frameRate: { ideal: FPS } }, audio: false });
+      this.stream = stream;
+      this.video.srcObject = stream;
+      await this.video.play();
+      this.pump(stream.getVideoTracks()[0]);
+    } catch (e) {
+      toast('Could not open that camera: ' + e.message);
+      this.sel.value = '';
+      $('.empty', this.el).hidden = false;
+    }
+  }
+  async openUrl(url) {
+    this.video.src = url;
+    try { await this.video.play(); } catch (e) { toast('Could not play that video: ' + e.message); return; }
+    $('.empty', this.el).hidden = true;
+    // take frames from the decoded video track when possible: it keeps its pace when the page is not in front
+    let track = null;
+    try { track = this.video.captureStream ? this.video.captureStream().getVideoTracks()[0] || null : null; } catch (e) {}
+    this.pump(track);
+  }
+  // Frames come straight from the camera track where the browser allows it (keeps running in a background tab);
+  // otherwise from the playing <video>.
+  async pump(track) {
+    const gen = this.sourceGen;
+    if (track && 'MediaStreamTrackProcessor' in window) {
+      const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 2 }).readable.getReader();
+      this.reader = reader;
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done || gen !== this.sourceGen) { if (value) value.close(); break; }
+          try { this.onFrame(value, value.displayWidth, value.displayHeight); } finally { value.close(); }
+        }
+      } catch (e) { /* source closed */ }
+      return;
+    }
+    const v = this.video;
+    const step = () => {
+      if (gen !== this.sourceGen) return;
+      if (v.readyState >= 2 && v.videoWidth) this.onFrame(v, v.videoWidth, v.videoHeight);
+      if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(step); else setTimeout(step, 1000 / FPS);
+    };
+    step();
+  }
+
+  // ---------- one source frame: fit into 1280x720, keep a copy for display, encode and send while running
+  onFrame(src, sw, sh) {
+    const now = performance.now();
+    if (now - this.lastCap < 1000 / FPS - 6) return;         // sources faster than 30 fps
+    if (this.sending && this.enc && this.enc.encodeQueueSize > 4) return;   // encoder behind: skip, do not queue
+    this.lastCap = now;
+    const s = Math.min(W / sw, H / sh), dw = sw * s, dh = sh * s;
+    if (dw < W - 1 || dh < H - 1) { this.wctx.fillStyle = '#000'; this.wctx.fillRect(0, 0, W, H); }
+    this.wctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    const bmp = this.work.transferToImageBitmap();
+    if (!this.sending) {
+      if (this.preview) this.preview.close();
+      this.preview = bmp;
+      return;
+    }
+    const seq = this.seq++;
+    const vf = new VideoFrame(bmp, { timestamp: seq * USPF, duration: USPF });
+    try { this.enc.encode(vf, { keyFrame: seq % 60 === 0 }); } finally { vf.close(); }
+    this.frames.push({ seq, bmp, t: now });
+    this.sentN++;
+    while (this.frames.length > 90) this.frames.shift().bmp.close();     // results more than 3 s behind
+  }
+
+  async beginSending(pipe) {
+    this.pipe = pipe;
+    this.seq = 0; this.maxRes = -1; this.lat = []; this.delay = 200;
+    this.frames.forEach((f) => f.bmp.close());
+    this.frames = []; this.results.clear();
+    this.shown = null;
+    const base = { width: W, height: H, bitrate: 3_500_000, framerate: FPS, latencyMode: 'realtime', avc: { format: 'annexb' } };
+    let cfg = null;
+    for (const codec of ['avc1.42E01F', 'avc1.4D401F', 'avc1.64001F']) {
+      for (const hw of ['prefer-hardware', 'no-preference']) {
+        const c = { ...base, codec, hardwareAcceleration: hw };
+        try { if ((await VideoEncoder.isConfigSupported(c)).supported) { cfg = c; break; } } catch (e) {}
+      }
+      if (cfg) break;
+    }
+    if (!cfg) throw new Error('this browser cannot encode H.264 video');
+    this.enc = new VideoEncoder({
+      output: (chunk) => {
+        if (!this.sending || !ws || ws.readyState !== 1) return;
+        const buf = new Uint8Array(8 + chunk.byteLength);
+        const dv = new DataView(buf.buffer);
+        dv.setUint8(0, this.pipe);
+        dv.setUint8(1, chunk.type === 'key' ? 1 : 0);
+        dv.setUint32(4, Math.round(chunk.timestamp / USPF), true);
+        chunk.copyTo(buf.subarray(8));
+        ws.send(buf);
+      },
+      error: (e) => { toast('Video encoder error: ' + e.message); stop(); },
+    });
+    this.enc.configure(cfg);
+    this.sending = true;
+    this.sendZones();
+  }
+  endSending() {
+    this.sending = false;
+    this.pipe = -1;
+    if (this.enc) { try { this.enc.close(); } catch (e) {} this.enc = null; }
+    this.frames.forEach((f) => { if (!this.shown || f.bmp !== this.shown.bmp) f.bmp.close(); });
+    this.frames = []; this.results.clear();
+    if (this.shown) { try { this.shown.bmp.close(); } catch (e) {} }
+    this.shown = null;
+  }
+
+  // ---------- results from the pipeline: one message per frame, matched to the kept frame by its number
+  onResult(m) {
+    this.results.set(m.seq, m.b);
+    if (m.seq > this.maxRes) this.maxRes = m.seq;
+    if (this.results.size > 240) {                            // results whose frame is long gone
+      const first = this.frames.length ? this.frames[0].seq : this.maxRes;
+      for (const q of this.results.keys()) if (q < first) this.results.delete(q);
+    }
+    this.resN++;
+    if (m.det) this.gpuMs += (m.ms - this.gpuMs) * 0.1;
+    const f = this.frames.find((x) => x.seq === m.seq);
+    if (f) {
+      this.lat.push(performance.now() - f.t);
+      if (this.lat.length > 90) this.lat.shift();
+      const want = Math.max(...this.lat) + 15;                // show each frame once its boxes are sure to be here
+      this.delay += (want - this.delay) * (want > this.delay ? 0.5 : 0.03);
+    }
+  }
+
+  // ---------- zones
+  norm(e) {
+    const r = this.canvas.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
+  }
+  toggleDraw() {
+    this.drawing = this.drawing ? null : [];
+    this.syncDraw();
+  }
+  syncDraw() {
+    const on = !!this.drawing;
+    $('.draw', this.el).classList.toggle('on', on);
+    $('.draw', this.el).textContent = on ? 'Cancel drawing' : 'Draw zone';
+    this.stage.classList.toggle('drawing', on);
+    $('.hint', this.el).textContent = on ? 'Click each corner. Double-click, press Enter, or click the first corner to finish.' : '';
+  }
+  onClick(e) {
+    const p = this.norm(e);
+    if (this.drawing) {
+      if (e.detail > 1) return;                               // second click of a double-click
+      const d = this.drawing;
+      if (d.length >= 3) {
+        const r = this.canvas.getBoundingClientRect();
+        if (Math.hypot((p[0] - d[0][0]) * r.width, (p[1] - d[0][1]) * r.height) < 12) { this.finishZone(); return; }
+      }
+      d.push(p);
+      return;
+    }
+    // not drawing: clicking a face opens the name box
+    if (!this.shown || state !== 'running') return;
+    const x = p[0] * W, y = p[1] * H;
+    let best = null;
+    for (const b of this.shown.boxes) {
+      if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) {
+        const a = (b[2] - b[0]) * (b[3] - b[1]);
+        if (!best || a < best.a) best = { a, b };
+      }
+    }
+    if (!best) return;
+    this.enrollTrack = best.b[4];
+    $('.who', this.el).textContent = '#' + this.enrollTrack;
+    $('.enroll', this.el).hidden = false;
+    const inp = $('.name', this.el);
+    inp.value = best.b[6] >= 0 ? (names.get(best.b[6]) || '') : '';
+    inp.focus();
+  }
+  finishZone() {
+    const d = this.drawing;
+    if (!d) return;
+    if (d.length < 3) { toast('A zone needs at least 3 corners'); return; }
+    const used = new Set(this.zones.map((z) => z.id));
+    let id = 1;
+    while (used.has(id)) id++;
+    if (id > 255) { toast('At most 255 zones per camera'); return; }
+    this.zones.push({ id, name: 'Zone ' + id, color: COLORS[(id - 1) % COLORS.length], pts: d.map((p) => [+p[0].toFixed(4), +p[1].toFixed(4)]) });
+    this.drawing = null;
+    this.syncDraw();
+    this.zonesChanged();
+  }
+  zonesChanged() {
+    localStorage.setItem('fpzones:' + this.i, JSON.stringify(this.zones));
+    this.renderZoneList();
+    this.sendZones();
+  }
+  sendZones() {
+    if (!ws || ws.readyState !== 1 || state !== 'running' || this.pipe < 0) return;
+    ws.send(JSON.stringify({ op: 'zones', cam: this.pipe, zones: this.zones.map((z) => ({ id: z.id, pts: z.pts })) }));
+  }
+  renderZoneList() {
+    const ul = $('.zones', this.el);
+    ul.innerHTML = '';
+    $('.nozones', this.el).hidden = this.zones.length > 0;
+    for (const z of this.zones) {
+      const li = document.createElement('li');
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.style.background = z.color;
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.value = z.name; inp.maxLength = 30; inp.setAttribute('aria-label', 'Zone name');
+      inp.onchange = () => { z.name = inp.value.trim() || 'Zone ' + z.id; localStorage.setItem('fpzones:' + this.i, JSON.stringify(this.zones)); };
+      const cnt = document.createElement('span');
+      cnt.className = 'count'; cnt.dataset.zone = z.id; cnt.textContent = '0';
+      cnt.title = 'People in this zone now';
+      const del = document.createElement('button');
+      del.className = 'link'; del.textContent = 'Delete';
+      del.onclick = () => { this.zones = this.zones.filter((q) => q !== z); this.zonesChanged(); };
+      li.append(chip, inp, cnt, del);
+      ul.appendChild(li);
+    }
+  }
+  zoneOf(id) { return this.zones.find((z) => z.id === id); }
+
+  // ---------- names
+  saveName() {
+    const name = $('.name', this.el).value.trim();
+    if (!name) return;
+    let label = -1;
+    for (const [l, n] of names) if (n.toLowerCase() === name.toLowerCase()) label = l;
+    if (label < 0) { label = nextLabel++; names.set(label, name); }
+    if (label >= 300) { toast('Name list is full'); return; }
+    ws.send(JSON.stringify({ op: 'enroll', cam: this.pipe, track: this.enrollTrack, label }));
+    $('.enroll', this.el).hidden = true;
+    toast('Saving ' + name + '…');
+  }
+
+  // ---------- drawing
+  resize() {
+    const r = this.stage.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = Math.max(320, Math.round(r.width * dpr));
+    this.canvas.width = w;
+    this.canvas.height = Math.round(w * 9 / 16);
+    this.dpr = dpr;
+  }
+  render(now) {
+    if (this.sending) {
+      // newest kept frame that is old enough (steady delay) and has its boxes; frames whose result never came are skipped
+      const target = now - this.delay;
+      let pick = -1;
+      for (let k = 0; k < this.frames.length; k++) {
+        const f = this.frames[k];
+        if (f.t > target) break;
+        if (this.results.has(f.seq)) pick = k;
+        else if (f.seq > this.maxRes) break;
+      }
+      if (pick >= 0) {
+        const f = this.frames[pick];
+        const old = this.frames.splice(0, pick + 1);
+        for (const o of old) if (o !== f) { o.bmp.close(); this.results.delete(o.seq); }
+        if (this.shown) this.shown.bmp.close();
+        this.shown = { bmp: f.bmp, boxes: this.results.get(f.seq) || [] };
+        this.results.delete(f.seq);
+      }
+    }
+    const c = this.ctx, cw = this.canvas.width, ch = this.canvas.height, k = cw / W, dpr = this.dpr;
+    const img = this.sending ? (this.shown && this.shown.bmp) : this.preview;
+    c.fillStyle = '#000';
+    c.fillRect(0, 0, cw, ch);
+    if (img) c.drawImage(img, 0, 0, cw, ch);
+    c.lineJoin = 'round';
+    c.font = `600 ${12 * dpr}px -apple-system, "Segoe UI", sans-serif`;
+    c.textBaseline = 'top';
+    // zones, in drawing order (later ones lie on top, as in the pipeline)
+    for (const z of this.zones) {
+      c.beginPath();
+      z.pts.forEach((p, n) => (n ? c.lineTo(p[0] * cw, p[1] * ch) : c.moveTo(p[0] * cw, p[1] * ch)));
+      c.closePath();
+      c.fillStyle = z.color + '2e';
+      c.fill();
+      c.strokeStyle = z.color;
+      c.lineWidth = 2 * dpr;
+      c.stroke();
+      const lx = Math.min(...z.pts.map((p) => p[0])) * cw, ly = Math.min(...z.pts.map((p) => p[1])) * ch;
+      this.tag(z.name, lx + 4 * dpr, ly + 4 * dpr, z.color, '#fff');
+    }
+    if (this.drawing) {
+      const d = this.drawing;
+      c.strokeStyle = '#fff';
+      c.lineWidth = 2 * dpr;
+      c.setLineDash([6 * dpr, 4 * dpr]);
+      c.beginPath();
+      d.forEach((p, n) => (n ? c.lineTo(p[0] * cw, p[1] * ch) : c.moveTo(p[0] * cw, p[1] * ch)));
+      if (d.length && this.cursor) c.lineTo(this.cursor[0] * cw, this.cursor[1] * ch);
+      c.stroke();
+      c.setLineDash([]);
+      for (const p of d) { c.fillStyle = '#fff'; c.beginPath(); c.arc(p[0] * cw, p[1] * ch, 4 * dpr, 0, 7); c.fill(); }
+    }
+    // boxes
+    const counts = new Map();
+    const boxes = this.sending && this.shown ? this.shown.boxes : [];
+    for (const b of boxes) {
+      const z = this.zoneOf(b[7]);
+      if (z) counts.set(z.id, (counts.get(z.id) || 0) + 1);
+      const col = z ? z.color : '#ffffff';
+      c.strokeStyle = col;
+      c.lineWidth = 2 * dpr;
+      c.strokeRect(b[0] * k, b[1] * k, (b[2] - b[0]) * k, (b[3] - b[1]) * k);
+      const label = `#${b[4]} ${this.nameOf(b)}${z ? ' · ' + z.name : ''}`;
+      this.tag(label, b[0] * k, b[1] * k - 17 * dpr, col, z ? '#fff' : '#000');
+    }
+    if (now - this.lastList > 250) {
+      this.lastList = now;
+      this.el.querySelectorAll('.count').forEach((el) => { el.textContent = counts.get(+el.dataset.zone) || 0; });
+      this.renderPeople(boxes);
+    }
+  }
+  tag(text, x, y, bg, fg) {
+    const c = this.ctx, dpr = this.dpr;
+    const w = c.measureText(text).width + 8 * dpr, h = 16 * dpr;
+    x = Math.max(0, Math.min(this.canvas.width - w, x));
+    y = Math.max(0, y);
+    c.fillStyle = bg;
+    c.fillRect(x, y, w, h);
+    c.fillStyle = fg;
+    c.fillText(text, x + 4 * dpr, y + 2 * dpr);
+  }
+  nameOf(b) {
+    if (!b[5]) return '…';                                    // not through recognition yet
+    if (b[6] < 0) return 'Unknown';
+    return names.get(b[6]) || 'Person ' + b[6];
+  }
+  renderPeople(boxes) {
+    const div = $('.people', this.el);
+    if (!this.sending) { div.innerHTML = '<div class="none">Start the pipeline to see people here.</div>'; return; }
+    if (!boxes.length) { div.innerHTML = '<div class="none">Nobody in view.</div>'; return; }
+    const rows = [...boxes].sort((a, b) => a[4] - b[4]).map((b) => {
+      const z = this.zoneOf(b[7]);
+      return `<tr><td>#${b[4]}</td><td>${esc(this.nameOf(b))}</td><td>${z ? `<span class="chip" style="display:inline-block;background:${z.color}"></span> ${esc(z.name)}` : '<span class="none">No zone</span>'}</td></tr>`;
+    });
+    div.innerHTML = `<table><thead><tr><th>ID</th><th>Name</th><th>Zone</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+  }
+  tickStats() {
+    this.fpsSent = this.sentN; this.fpsRes = this.resN;
+    this.sentN = 0; this.resN = 0;
+    $('.stats', this.el).textContent = this.sending
+      ? `sent ${this.fpsSent} fps · results ${this.fpsRes} fps · shown ${Math.round(this.delay)} ms behind · GPU ${Math.round(this.gpuMs)} ms`
+      : '';
+  }
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+// ---------- connection to the bridge
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => { if (state === 'idle') setStatus('Connected', 'ok'); };
+  ws.onclose = () => {
+    if (state !== 'idle') localStop();
+    setStatus('Not connected to the laptop', 'bad');
+    setTimeout(connect, 1500);
+  };
+  ws.onmessage = (ev) => {
+    if (typeof ev.data !== 'string') return;
+    let m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (!m.event) { const p = panels.find((q) => q.pipe === m.cam); if (p) p.onResult(m); return; }
+    if (m.event === 'ready') onReady(m);
+    else if (m.event === 'stopped') { if (state !== 'idle') { localStop(); toast(m.reason || (m.code ? 'The pipeline stopped (exit code ' + m.code + ')' : 'Pipeline stopped'), 6000); } }
+    else if (m.event === 'error') { localStop(); toast('Could not start the pipeline: ' + m.message, 8000); }
+    else if (m.event === 'enrolled') toast('Saved ' + (names.get(m.label) || 'face') + '. The name appears within a second.');
+    else if (m.event === 'enroll_failed') toast('Could not save that face: the person left the view. Try again.');
+    else if (m.event === 'log') $('#note').textContent = m.line.replace(/^\[[^\]]*\]\s*/, '').slice(0, 90);
+  };
+}
+let active = [];
+async function start() {
+  if (state !== 'idle') { stop(); return; }
+  if (!('VideoEncoder' in window)) { toast('This browser has no video encoder (WebCodecs). Use Chrome.', 8000); return; }
+  if (!ws || ws.readyState !== 1) { toast('Not connected to the laptop yet'); return; }
+  active = panels.filter((p) => p.hasSource());
+  if (!active.length) { toast('Pick a camera first'); return; }
+  names.clear(); nextLabel = 0;
+  state = 'starting';
+  setStatus('Starting GPU pipeline…', 'warn');
+  $('#start').textContent = 'Stop';
+  // auto: a camera on this Mac is a close-up camera, a clip or file is CCTV-like
+  const zs = $('#zoom').value;
+  const zoom = zs === 'auto' ? (active.some((p) => p.sel.value.startsWith('cam:')) ? 0.5 : 1) : +zs;
+  $('#zoom').disabled = true;
+  ws.send(JSON.stringify({ op: 'start', cams: active.length, zoom }));
+}
+async function onReady(m) {
+  if (state !== 'starting') return;
+  state = 'running';
+  try {
+    for (let k = 0; k < active.length; k++) await active[k].beginSending(k);
+  } catch (e) { toast(e.message, 8000); stop(); return; }
+  setStatus(`Running: ${active.length} camera${active.length > 1 ? 's' : ''}, faces detected ${m.detect_fps}× per second`, 'ok');
+  $('#note').textContent = '';
+}
+function localStop() {
+  state = 'idle';
+  panels.forEach((p) => p.endSending());
+  $('#start').textContent = 'Start pipeline';
+  $('#zoom').disabled = false;
+  setStatus(ws && ws.readyState === 1 ? 'Connected' : 'Not connected to the laptop', ws && ws.readyState === 1 ? 'ok' : 'bad');
+}
+function stop() {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ op: 'stop' }));
+  localStop();
+}
+
+// ---------- cameras
+async function listDevices() {
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    devices = all.filter((d) => d.kind === 'videoinput');
+  } catch (e) { devices = []; }
+  const named = devices.some((d) => d.label);
+  $('#perm').hidden = named || !navigator.mediaDevices;
+  panels.forEach((p) => p.fillSources());
+  return named;
+}
+async function allowCameras() {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    s.getTracks().forEach((t) => t.stop());
+  } catch (e) { toast('Camera access was not allowed: ' + e.message, 6000); return; }
+  if (await listDevices()) {
+    // first camera on the first panel, second camera on the second
+    for (let k = 0; k < panels.length && k < devices.length; k++) {
+      if (!panels[k].sel.value) { panels[k].sel.value = 'cam:' + devices[k].deviceId; await panels[k].pickSource(panels[k].sel.value); }
+    }
+  }
+}
+
+for (let i = 0; i < NCAM; i++) panels.push(new Panel(i));
+$('#start').onclick = start;
+$('#perm').onclick = allowCameras;
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  for (const p of panels) {
+    if (!p.drawing) continue;
+    if (e.key === 'Enter') p.finishZone();
+    if (e.key === 'Escape') { p.drawing = null; p.syncDraw(); }
+    if (e.key === 'Backspace') p.drawing.pop();
+  }
+});
+if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', listDevices);
+fetch('/clips').then((r) => r.json()).then((c) => { clips = c; panels.forEach((p) => p.fillSources()); }).catch(() => {});
+listDevices();
+connect();
+setInterval(() => panels.forEach((p) => p.tickStats()), 1000);
+(function loop(now) { panels.forEach((p) => p.render(now)); requestAnimationFrame(loop); })(performance.now());
+window.addEventListener('beforeunload', () => { if (state !== 'idle') stop(); });
+</script>
+</body>
+</html>

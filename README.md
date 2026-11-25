@@ -11,6 +11,8 @@ The project ships two runtimes:
 
 A **Streamlit client** (`client/app.py`) provides a UI for face registration and session management against the gRPC service.
 
+**Many cameras on one GPU:** [`fastpipe/`](fastpipe/README.md) is a second implementation that keeps every frame on the GPU (C++/CUDA/TensorRT, no Triton): 40 dense 720p cameras on a 6 GB laptop GPU at 35% load, with zones and a browser test page.
+
 **GPU cluster runbook:** For a full copy-paste setup on Ubuntu 24.04 with NVIDIA T4 (GPU verify → `setup.sh` → Docker/Triton → model download → build → enroll → run), use [`commands.md`](commands.md).
 
 ---
