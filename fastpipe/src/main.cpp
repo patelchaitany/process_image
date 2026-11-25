@@ -121,7 +121,7 @@ static Config parse(int argc, char** argv) {
 }
 
 // Match thresholds belong to the recogniser: the same cosine score means different things for different models.
-// <engine without .plan>.thr holds "match_thr <x>" and "unknown_thr <y>" (written by tools/build_engines.sh from the
+// <engine without .plan>.thr holds "match_thr <x>" and "unknown_thr <y>" (written by tools/setup/build_engines.sh from the
 // measured score distributions). Values given on the command line win.
 static void load_thresholds(Config& c) {
     std::string p = c.rec_plan;

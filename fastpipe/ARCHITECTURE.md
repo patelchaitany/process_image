@@ -311,7 +311,7 @@ recognition is L2-normalised into the gallery on the GPU and the track is named 
 ## 13. Recogniser and match thresholds
 
 The recogniser is an engine file, nothing else: every supported model takes a 112×112 RGB face scaled to −1..1 (K3)
-and returns 512 numbers (K4 normalises them). `tools/build_engines.sh` builds four:
+and returns 512 numbers (K4 normalises them). `tools/setup/build_engines.sh` builds four:
 
 | Engine | Model | Size | GPU time per face | 40 dense cameras |
 |---|---|---|---|---|
@@ -335,14 +335,14 @@ quality matters more than camera count. Measurements, the model comparison and l
 ## 9. Build, run and results
 
 ```bash
-# WSL2 / Linux with CUDA 12.x, TensorRT 10.x, FFmpeg 6 dev packages (tools/wsl_trt_install.sh)
+# WSL2 / Linux with CUDA 12.x, TensorRT 10.x, FFmpeg 6 dev packages (tools/setup/wsl_trt_install.sh)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-tools/build_engines.sh                      # FP16 engines + per-layer profiles (ONNX from tools/prep_onnx.py)
+tools/setup/build_engines.sh                # FP16 engines + per-layer profiles (ONNX from tools/setup/prep_onnx.py)
 build/fastpipe --det engines/det_r384_fp16.plan --rec engines/rec_edgeface_s_fp16.plan --counts 16,32,64,128
 build/fastpipe ... --policy fifo --buffer-s 3 --budget 0 --counts 40,48,56   # real-time rule: every frame, 3 s buffer
-build/fastpipe ... --dump 60      # validation dump (tools/compare_dump.py)
+build/fastpipe ... --dump 60      # validation dump (tools/check/compare_dump.py)
 build/fastpipe ... --kbench 1     # per-kernel GPU time and achieved bandwidth
-tools/prof.sh 64 n64              # Nsight Systems timeline with NVTX stage ranges
+tools/bench/prof.sh 64 n64              # Nsight Systems timeline with NVTX stage ranges
 ```
 
 Model comparison, the recogniser choice and its measurements: [benchmarks/models/RESULTS.md](benchmarks/models/RESULTS.md).

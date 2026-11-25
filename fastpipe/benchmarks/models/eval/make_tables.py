@@ -1,9 +1,9 @@
 """Print the result tables (Markdown) from det_results.jsonl, det_results_size.jsonl, rec_results.jsonl,
 rec_results_noflip.jsonl and trt_speed.log.
-  python3 make_tables.py [folder holding the three files, default ..]"""
+  python3 make_tables.py [folder holding the result files, default ../results]"""
 import json, os, re, sys
 
-D = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+D = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
 
 # model key -> (ONNX file name as it appears in trt_speed.log, licence, commercial use)
 DET = {

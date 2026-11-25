@@ -51,7 +51,7 @@ Each recogniser was built as a TensorRT FP16 engine and run in `fastpipe` withou
 
 Dense scene (about 51 faces per frame), 720p at 30 fps, detection on 10 frames per second, re-check every 3 s. The
 rule is the strict one: a camera-second is done when every box, ID and name for its 30 frames is delivered, and 95%
-of camera-seconds must be done within 1 s. One run per row (`pipeline_runs.jsonl`); a repeat of EdgeFace-S at 40
+of camera-seconds must be done within 1 s. One run per row (`results/pipeline_runs.jsonl`); a repeat of EdgeFace-S at 40
 cameras gave 100% and 36% GPU.
 
 | Recogniser | Cameras | Seconds done within 1 s | p95 delay | GPU busy | GPU memory | Video decoder busy |
@@ -70,7 +70,7 @@ ArcFace R50 was not run above 40 cameras. Nothing was run above 64: the first Ed
 ### Match threshold
 
 A cosine score does not mean the same thing for two recognisers, so each engine now carries its own thresholds in
-`<engine>.thr`, written by `tools/build_engines.sh` and read by `fastpipe` at start (`--match-thr` and
+`<engine>.thr`, written by `tools/setup/build_engines.sh` and read by `fastpipe` at start (`--match-thr` and
 `--unknown-thr` override them).
 
 | Recogniser | Match at or above | Unknown below |
@@ -83,7 +83,7 @@ A cosine score does not mean the same thing for two recognisers, so each engine 
 They give every model the false-match rate ArcFace R50 has at 0.45 and 0.25. On the five pair sets pooled (15,500
 different-person pairs), 0.1% of different-person pairs reach 0.231 with ArcFace R50, 0.364 with EdgeFace-S, 0.242
 with EdgeFace-Base and 0.267 with MobileFaceNet; each model's thresholds are R50's plus that difference
-(`eval/thresholds.py`, `thresholds.jsonl`). The pipeline measurement below agrees for EdgeFace-S: it reaches R50's
+(`eval/thresholds.py`, `results/thresholds.jsonl`). The pipeline measurement below agrees for EdgeFace-S: it reaches R50's
 false-match rate at 0.58 on one clip and 0.56 on the other.
 
 ### What the switch costs
@@ -103,7 +103,7 @@ how many true matches survive at a threshold strict enough to keep false matches
 
 At these thresholds 1 of the 15,500 different-person pairs matches with ArcFace R50 and none with the other two.
 
-**In the pipeline.** `tools/track_scores.py` labels the test clips by tracking: one track at two moments is the same
+**In the pipeline.** `tools/check/track_scores.py` labels the test clips by tracking: one track at two moments is the same
 person, two faces in one frame are different people. Embeddings are the pipeline's own (face cut out by its box, no
 landmark alignment). 450 frames of each clip:
 
@@ -127,7 +127,7 @@ landmark alignment). 450 frames of each clip:
 ### Embedding check
 
 Pipeline embeddings (NV12 crop on the GPU, FP16 engine) against the reference (OpenCV crop, ONNX Runtime FP32) for
-the same 999 boxes, `tools/compare_dump.py`: mean cosine 0.987 for ArcFace R50, 0.987 for EdgeFace-S and 0.977 for
+the same 999 boxes, `tools/check/compare_dump.py`: mean cosine 0.987 for ArcFace R50, 0.987 for EdgeFace-S and 0.977 for
 EdgeFace-Base.
 
 ### Switching recogniser
@@ -285,12 +285,16 @@ use (SCRFD and EdgeFace code are permissively licensed), or YuNet with SFace as 
 
 | File | Content |
 |---|---|
-| `det_results.jsonl`, `det_results_size.jsonl` | Detector results at 640 and at 1280 |
-| `rec_results.jsonl`, `rec_results_noflip.jsonl` | Recogniser results with and without the mirror image |
-| `trt_speed.log` | TensorRT timings |
-| `pipeline_runs.jsonl` | The capacity runs in the pipeline |
-| `thresholds.jsonl`, `eval/thresholds.py` | Score distributions on the pair sets, for the match thresholds |
-| `track_scores.jsonl`, `fastpipe/tools/track_scores.py` | Match scores inside the pipeline on the two test clips |
-| `eval/eval_det.py`, `eval/eval_rec.py` | The evaluators (run on the laptop: `python eval_det.py <model>`, `python eval_rec.py <model>`) |
-| `eval/make_tables.py` | Prints the tables above from the result files |
-| `eval/trt_all.sh`, `eval/trt_speed.sh` | TensorRT timing (WSL) |
+| `CANDIDATES.md` | Every model considered: source, download link, size, published accuracy, licence |
+| `results/det_results.jsonl`, `results/det_results_size.jsonl` | Detector results at input 640 and at 1280 |
+| `results/rec_results.jsonl`, `results/rec_results_noflip.jsonl` | Recogniser results with and without the mirror image |
+| `results/thresholds.jsonl` | Score distributions on the pair sets, for the match thresholds |
+| `results/track_scores.jsonl` | Match scores inside the pipeline on the two test clips |
+| `results/pipeline_runs.jsonl` | The capacity runs in the pipeline |
+| `results/trt_speed.log` | TensorRT timings |
+| `eval/eval_det.py`, `eval/eval_rec.py` | The evaluators: `python eval_det.py <model>`, `python eval_rec.py <model>` |
+| `eval/thresholds.py` | Produces `thresholds.jsonl` |
+| `eval/make_tables.py` | Prints the tables above from `results/` |
+| `eval/onnx_info.py` | Prints a model file's inputs and outputs |
+| `eval/run/` | The batch files that ran everything on the test machine: model download, each evaluation, TensorRT timing |
+| `tools/check/track_scores.py` (in `fastpipe/tools`) | Produces `track_scores.jsonl` from a pipeline dump |

@@ -30,17 +30,23 @@ licences are in [benchmarks/models/RESULTS.md](benchmarks/models/RESULTS.md).
 | Path | Content |
 |---|---|
 | `src/` | The pipeline: decoder, CUDA kernels, GPU tracker, TensorRT wrapper, scheduler |
-| `tools/` | Engine build, stress and profiling scripts, validation against ONNX Runtime |
+| `tools/setup/` | Install TensorRT, build the pipeline, prepare ONNX files, build engines |
+| `tools/bench/` | Stress runs and profiling |
+| `tools/check/` | Checks against a reference: embeddings, boxes, tracker, match scores |
+| `tools/clips/` | Make the test clips with FFmpeg |
+| `tools/exp/` | Run one experiment on the remote GPU machine under a lock |
 | `live/` | Browser test page for real cameras: draw zones, name faces ([live/README.md](live/README.md)) |
-| `benchmarks/models/` | Model comparison: results, evaluators, candidate list |
+| `benchmarks/models/` | Model comparison: `RESULTS.md`, `CANDIDATES.md`, `results/` (raw data), `eval/` (evaluators) |
+
+Every script is listed with its purpose in [tools/README.md](tools/README.md).
 
 ## Build and run
 
-Linux or WSL2 with CUDA 12.x, TensorRT 10.x and the FFmpeg 6 development packages (`tools/wsl_trt_install.sh`).
+Linux or WSL2 with CUDA 12.x, TensorRT 10.x and the FFmpeg 6 development packages (`tools/setup/wsl_trt_install.sh`).
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-tools/build_engines.sh        # TensorRT FP16 engines and each recogniser's match thresholds
+tools/setup/build_engines.sh  # TensorRT FP16 engines and each recogniser's match thresholds
 build/fastpipe --det engines/det_r384_fp16.plan --rec engines/rec_edgeface_s_fp16.plan --counts 16,32,40
 ```
 
@@ -50,7 +56,7 @@ in WSL); change them for yours.
 ## Models
 
 Model files are not in this repository. `benchmarks/models/CANDIDATES.md` lists where each comes from, and
-`tools/prep_onnx.py` prepares the ONNX files the engines are built from.
+`tools/setup/prep_onnx.py` prepares the ONNX files the engines are built from.
 
 | Role | Default | Other engines |
 |---|---|---|

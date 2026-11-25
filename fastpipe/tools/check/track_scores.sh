@@ -1,6 +1,6 @@
 #!/bin/bash
 # (WSL) Dump every face's box and embedding for 450 frames of the two test clips, once per recogniser.
-# Then, on Windows:  python tools\track_scores.py E:\bench\results\cpp\ts_<scene>_<rec>.bin
+# Then, on Windows:  python tools\check\track_scores.py E:\bench\results\cpp\ts_<scene>_<rec>.bin
 cd /root/fastpipe
 for scene in normal:/mnt/e/bench/cam720_265_rot0.mp4 dense:/mnt/e/bench/dense45_hevc_rot0.mp4; do
   name=${scene%%:*}; v=${scene#*:}
