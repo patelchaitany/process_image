@@ -1,0 +1,1 @@
+cd /root/fastpipe && ./build/fastpipe --det engines/det_r384_fp16.plan --rec engines/rec_${REC:-edgeface_s}_fp16.plan --video "/mnt/e/bench/cam30_265_rot{r}.mp4" --kfeval 540 2>&1 | grep keyframe | tee /mnt/e/bench/results/cpp/kfeval30.jsonl
